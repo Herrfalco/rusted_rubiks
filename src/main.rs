@@ -15,7 +15,7 @@ type Id = usize;
 
 //penser a supprimer les derive et debug inutils
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum MyColor {
     Green,
     Blue,
@@ -23,6 +23,7 @@ enum MyColor {
     Yellow,
     Red,
     White,
+    Void,
 }
 
 impl std::fmt::Display for MyColor {
@@ -34,6 +35,7 @@ impl std::fmt::Display for MyColor {
             Yellow => "  ".on_bright_yellow(),
             Red => "  ".on_bright_red(),
             White => "  ".on_bright_white(),
+            Void => "  ".on_black(),
         }
         .fmt(f)
     }
@@ -95,9 +97,9 @@ enum RotType {
 #[derive(Debug)]
 enum SubCube {
     Core,
-    Center(MyColor),
-    Edge(Face, (MyColor, MyColor)),
-    Corner((Face, Face), (MyColor, MyColor, MyColor)),
+    Center(Face, MyColor),
+    Edge([Face; 2], [MyColor; 2]),
+    Corner([Face; 3], [MyColor; 3]),
 }
 
 //debug
@@ -186,55 +188,51 @@ impl Cube {
         [2, 5, 8, 11, 14, 17, 20, 23, 26],
     ];
 
+    const COLOR_MAP: [MyColor; 6] = [Blue, Green, White, Yellow, Orange, Red];
+
     fn new() -> Self {
         Self {
             ids: (0..27).collect(),
             subs: [
-                Corner((Up, Left), (Blue, Orange, Yellow)),
-                Edge(Up, (Blue, Yellow)),
-                Corner((Up, Back), (Blue, Yellow, Red)),
-                Edge(Up, (Blue, Orange)),
-                Center(Blue),
-                Edge(Up, (Blue, Red)),
-                Corner((Up, Front), (Blue, White, Orange)),
-                Edge(Up, (Blue, White)),
-                Corner((Up, Right), (Blue, Red, White)),
-                Edge(Back, (Yellow, Orange)),
-                Center(Yellow),
-                Edge(Back, (Yellow, Red)),
-                Center(Orange),
+                Corner([Up, Left, Back], [Blue, Orange, Yellow]),
+                Edge([Up, Back], [Blue, Yellow]),
+                Corner([Up, Back, Right], [Blue, Yellow, Red]),
+                Edge([Up, Left], [Blue, Orange]),
+                Center(Up, Blue),
+                Edge([Up, Right], [Blue, Red]),
+                Corner([Up, Front, Left], [Blue, White, Orange]),
+                Edge([Up, Front], [Blue, White]),
+                Corner([Up, Right, Front], [Blue, Red, White]),
+                Edge([Back, Left], [Yellow, Orange]),
+                Center(Up, Yellow),
+                Edge([Back, Right], [Yellow, Red]),
+                Center(Left, Orange),
                 Core,
-                Center(Red),
-                Edge(Front, (White, Orange)),
-                Center(White),
-                Edge(Front, (White, Red)),
-                Corner((Down, Back), (Green, Yellow, Orange)),
-                Edge(Down, (Green, Yellow)),
-                Corner((Down, Right), (Green, Red, Yellow)),
-                Edge(Down, (Green, Orange)),
-                Center(Green),
-                Edge(Down, (Green, Red)),
-                Corner((Down, Left), (Green, Orange, White)),
-                Edge(Down, (Green, White)),
-                Corner((Down, Front), (Green, White, Red)),
+                Center(Right, Red),
+                Edge([Front, Left], [White, Orange]),
+                Center(Front, White),
+                Edge([Front, Right], [White, Red]),
+                Corner([Down, Back, Left], [Green, Yellow, Orange]),
+                Edge([Down, Back], [Green, Yellow]),
+                Corner([Down, Right, Back], [Green, Red, Yellow]),
+                Edge([Down, Left], [Green, Orange]),
+                Center(Down, Green),
+                Edge([Down, Right], [Green, Red]),
+                Corner([Down, Left, Front], [Green, Orange, White]),
+                Edge([Down, Front], [Green, White]),
+                Corner([Down, Front, Right], [Green, White, Red]),
             ],
         }
     }
 
     fn sub_2_str(&self, id: Id, face: Face) -> String {
         match self.subs[id] {
-            Center(col) => col.to_string(),
-            Edge(dir, (col_0, col_1)) => if dir == face { col_0 } else { col_1 }.to_string(),
-            Corner((dir_0, dir_1), (col_0, col_1, col_2)) => if dir_0 == face {
-                col_0
-            } else if dir_1 == face {
-                col_1
-            } else {
-                col_2
-            }
-            .to_string(),
-            _ => "X".to_string(),
+            Center(_, col) => col,
+            Edge(dir, col) => col[dir.iter().position(|d| *d == face).unwrap()],
+            Corner(dir, col) => col[dir.iter().position(|d| *d == face).unwrap()],
+            _ => Void,
         }
+        .to_string()
     }
 
     fn row_2_str(&self, pos: &[usize], face: Face, rev: bool) -> String {
@@ -250,12 +248,6 @@ impl Cube {
 
     fn rotate_dir(dir: &mut Face, face: Face, chain: &[Face], step: isize) {
         if *dir != face {
-            /*
-            println!(
-                "dir: {:?}, face: {:?}, chain: {:?}, step: {:?}",
-                dir, face, chain, step
-            );
-            */
             *dir = chain[((chain.iter().position(|x| x == dir).unwrap() + chain.len()) as isize
                 + step) as usize
                 % 4];
@@ -270,10 +262,15 @@ impl Cube {
         }];
 
         match &mut self.subs[id] {
-            Edge(dir, _) => Self::rotate_dir(dir, face, chain, step),
-            Corner((dir_0, dir_1), _) => {
-                Self::rotate_dir(dir_0, face, chain, step);
-                Self::rotate_dir(dir_1, face, chain, step);
+            Edge(dir, _) => {
+                for d in dir {
+                    Self::rotate_dir(d, face, chain, step);
+                }
+            }
+            Corner(dir, _) => {
+                for d in dir {
+                    Self::rotate_dir(d, face, chain, step);
+                }
             }
             _ => (),
         }
@@ -415,6 +412,7 @@ fn main() {
         }
         println!("");
     }
+    println!("{}", cube);
     let mut solver = Solver::new(&mut cube);
     solver.solve();
 }

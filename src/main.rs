@@ -69,7 +69,7 @@ impl std::fmt::Display for Face {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Rotation {
     Cw,
     Ccw,
@@ -88,10 +88,14 @@ impl std::fmt::Display for Rotation {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum RotType {
     Single,
     Dual,
+}
+
+impl RotType {
+    const TYPE_SET: [RotType; 2] = [Single, Dual];
 }
 
 #[derive(Debug)]
@@ -372,10 +376,10 @@ fn new_app() -> App<'static> {
         )
 }
 
-fn main() {
-    let mut cube = Cube::new();
+fn app_init(cube: &mut Cube) {
     let cmd = new_app().get_matches();
 
+    println!("");
     if !cmd.is_present("new") {
         print!("{}", "MOVES: ".bright_green());
         for (face, rot, rot_type) in if cmd.is_present("rand") {
@@ -410,9 +414,15 @@ fn main() {
             );
             cube.rotate(face, rot, rot_type);
         }
-        println!("");
+        println!("\n");
     }
     println!("{}", cube);
+}
+
+fn main() {
+    let mut cube = Cube::new();
+
+    app_init(&mut cube);
     let mut solver = Solver::new(&mut cube);
     solver.solve();
 }

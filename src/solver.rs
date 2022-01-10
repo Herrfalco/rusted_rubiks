@@ -1,44 +1,90 @@
 use super::*;
+use serde::{de::DeserializeOwned, Serialize};
+use std::collections::HashMap;
 use std::fs;
+use std::hash::Hash;
+
+trait HashMove<K> {
+    fn ins_min(&mut self, key: K, comb: &Vec<(Face, Rotation, RotType)>);
+    fn save(&self, file: &str);
+    fn load(&mut self, file: &str);
+
+    fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
+        ((face as u8) << 4) | ((rot as u8) << 1) | (typ as u8)
+    }
+    fn comb_2_rev_u8(comb: &Vec<(Face, Rotation, RotType)>) -> Vec<u8> {
+        comb.iter()
+            .rev()
+            .map(|(face, rot, typ)| {
+                Self::mov_2_u8(*face, if let Cw = *rot { Ccw } else { Cw }, *typ)
+            })
+            .collect()
+    }
+}
+
+impl<K> HashMove<K> for HashMap<K, Vec<u8>>
+where
+    K: Eq + Hash + Serialize + DeserializeOwned,
+{
+    fn ins_min(&mut self, key: K, comb: &Vec<(Face, Rotation, RotType)>) {
+        match self.get_mut(&key) {
+            Some(val) => {
+                if val.len() > comb.len() {
+                    *val = Self::comb_2_rev_u8(comb);
+                }
+            }
+            None => {
+                self.insert(key, Self::comb_2_rev_u8(comb));
+            }
+        }
+    }
+
+    fn save(&self, file: &str) {
+        fs::write(file, bincode::serialize(self).unwrap()).unwrap();
+    }
+
+    fn load(&mut self, file: &str) {
+        let bin = fs::read(file).unwrap();
+
+        *self = bincode::deserialize(&bin).unwrap();
+    }
+}
 
 pub struct Solver<'a> {
     mov_stack: Vec<(Face, Rotation, RotType)>,
-    //    bookmark: Vec<usize>,
     cube: &'a mut Cube,
 }
 
-impl<'a> Solver<'a> {
+impl<'a, 'de> Solver<'a> {
     const FACE_EDGES: [[usize; 3]; 2] = [[1, 3, 7], [1, 5, 7]];
+    const FACE_CORNS: [usize; 4] = [0, 2, 6, 8];
+    const MOV_SET: [(Face, Rotation, RotType); 18] = [
+        (Left, Ccw, Dual),
+        (Right, Ccw, Dual),
+        (Front, Ccw, Dual),
+        (Back, Ccw, Dual),
+        (Up, Ccw, Dual),
+        (Down, Ccw, Dual),
+        (Left, Ccw, Single),
+        (Right, Ccw, Single),
+        (Left, Cw, Single),
+        (Right, Cw, Single),
+        (Front, Ccw, Single),
+        (Back, Ccw, Single),
+        (Front, Cw, Single),
+        (Back, Cw, Single),
+        (Up, Ccw, Single),
+        (Down, Ccw, Single),
+        (Up, Cw, Single),
+        (Down, Cw, Single),
+    ];
 
     pub fn new(cube: &mut Cube) -> Solver {
         Solver {
             mov_stack: Vec::with_capacity(128),
-            //           bookmark: Vec::with_capacity(32),
             cube,
         }
     }
-
-    /*
-        fn do_comb(&mut self, combs: &[(Face, Rotation, RotType)]) {
-            self.bookmark.push(self.mov_stack.len());
-            for comb in combs {
-                self.mov_stack.push(*comb);
-                self.cube.rotate(comb.0, comb.1, comb.2);
-            }
-        }
-
-        fn undo_comb(&mut self) {
-            let bookmark = self.bookmark.pop().unwrap();
-
-            while self.mov_stack.len() > bookmark {
-                if let Some((face, rot, dual)) = self.mov_stack.pop() {
-                    self.cube
-                        .rotate(face, if let Cw = rot { Ccw } else { Cw }, dual);
-                }
-            }
-        }
-
-    */
 
     fn do_mov(&mut self, face: Face, rot: Rotation, typ: RotType) {
         self.mov_stack.push((face, rot, typ));
@@ -53,7 +99,7 @@ impl<'a> Solver<'a> {
         (face, rot, typ)
     }
 
-    fn scan_edges(&mut self) -> u16 {
+    fn key_gen_1(&mut self) -> u16 {
         let mut result: u16 = 0;
 
         for (face_i, face) in Cube::FACE_CHAINS[2].iter().enumerate() {
@@ -81,7 +127,35 @@ impl<'a> Solver<'a> {
                         | (((face_i + 4 - face_j) % 2) ^ if dir[col_i] == *face { 0 } else { 1 })
                             as u16;
                 } else {
-                    panic!("Not an edge")
+                    panic!("Not an edge");
+                }
+            }
+        }
+        result
+    }
+
+    fn key_gen_2(&mut self) -> u128 {
+        let mut result = 0;
+
+        for face in &Cube::FACE_MAP[4..6] {
+            for idx in Self::FACE_CORNS {
+                if let Corner(dirs, cols) = self.cube.subs[self.cube.ids[face[idx]]] {
+                    result <<= 4;
+                    result |= dirs[0] as u128;
+                } else {
+                    panic!("Not a corner");
+                }
+            }
+        }
+
+        for id in (1..27).step_by(2).map(|idx| self.cube.ids[idx]) {
+            if let Edge(dirs, cols) = self.cube.subs[id] {
+                result <<= 4;
+                if Cube::FACE_MAP[Left as usize].contains(&id)
+                    | Cube::FACE_MAP[Right as usize].contains(&id)
+                {
+                    result |= 0x8;
+                    result |= dirs[0] as u128;
                 }
             }
         }
@@ -96,98 +170,57 @@ impl<'a> Solver<'a> {
         )
     }
 
-    /*
-    fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
-        ((face as u8) << 4) | ((rot as u8) << 1) | (typ as u8)
-    }
-
-    fn stack_2_u8_sol(&self) -> Vec<u8> {
-        self.mov_stack
-            .iter()
-            .rev()
-            .map(|(face, rot, typ)| {
-                Self::mov_2_u8(*face, if let Cw = *rot { Ccw } else { Cw }, *typ)
-            })
-            .collect()
-    }
-
-    fn save_result(res: &mut [Option<Vec<u8>>]) {
-        fs::write(
-            "data_1",
-            res.iter_mut()
-                .map(|x| match x.take() {
-                    Some(mut movs) => {
-                        movs.push(0xff);
-                        movs
-                    }
-                    _ => vec![0xff],
-                })
-                .flatten()
-                .collect::<Vec<u8>>(),
-        )
-        .unwrap();
-    }
-    */
-
-    fn load_table(table: &str) -> Vec<Vec<(Face, Rotation, RotType)>> {
-        fs::read(table)
-            .unwrap()
-            .split(|x| *x == 0xff)
-            .map(|movs| {
-                movs.iter()
-                    .map(|mov| Solver::u8_2_mov(*mov))
-                    .collect::<Vec<(Face, Rotation, RotType)>>()
-            })
-            .collect::<Vec<Vec<(Face, Rotation, RotType)>>>()
-    }
-
-    /*
-    fn rec_search(&mut self, sol: &mut [Option<Vec<u8>>], rank: usize) {
-        match &mut sol[self.scan_edges() as usize] {
-            Some(movs) => {
-                if movs.len() > self.mov_stack.len() {
-                    *movs = self.stack_2_u8_sol();
-                }
-            }
-            _ => sol[self.scan_edges() as usize] = Some(self.stack_2_u8_sol()),
-        }
-
+    fn rec_search<K>(
+        &mut self,
+        sol: &mut HashMap<K, Vec<u8>>,
+        key_gen: fn(&mut Self) -> K,
+        set_sz: usize,
+        rank: usize,
+    ) where
+        K: Eq + Hash + Serialize + DeserializeOwned,
+    {
+        sol.ins_min(key_gen(self), &mut self.mov_stack);
         if rank > 0 {
-            for face in Face::FACE_SET {
-                for rot in Rotation::ROT_SET.iter().rev() {
-                    if let Ccw = rot {
-                        for typ in RotType::TYPE_SET {
-                            self.do_mov(face, *rot, typ);
-                            self.rec_search(sol, rank - 1);
-                            self.undo_mov();
-                        }
-                    } else {
-                        self.do_mov(face, *rot, Single);
-                        self.rec_search(sol, rank - 1);
-                        self.undo_mov();
-                    }
-                }
+            for (face, rot, typ) in Self::MOV_SET[..set_sz].iter() {
+                self.do_mov(*face, *rot, *typ);
+                self.rec_search(sol, key_gen, set_sz, rank - 1);
+                self.undo_mov();
             }
         }
     }
-    */
+
+    pub fn extract_table_1(&mut self) {
+        //capacity ?
+        let mut table: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2048);
+
+        self.rec_search(&mut table, Self::key_gen_1, Self::MOV_SET.len(), 7);
+        table.save("table_1");
+    }
+
+    pub fn extract_table_2(&mut self) {
+        //capacity ?
+        let mut table: HashMap<u128, Vec<u8>> = HashMap::with_capacity(1_082_565);
+
+        self.rec_search(&mut table, Self::key_gen_2, Self::MOV_SET.len() - 4, 10);
+        table.save("table_2");
+    }
 
     pub fn solve(&mut self) {
+        //  self.extract_table_1();
+        self.extract_table_2();
+
         /*
-        let mut sol: Vec<Option<Vec<u8>>> = vec![None; 4096];
+        //capacity ?
+        let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2048);
 
-        self.rec_search(&mut sol, 7);
-        Self::save_result(&mut sol);
-        println!("saved");
-
-        let load = fs::read("data_1").unwrap();
-        println!("{}", load.iter().filter(|byte| **byte == 0xff).count());
-        */
-
-        let load = Self::load_table("data_1");
+        table_1.load("table_1");
 
         print!("{}", "PHASE 1: ".bright_green());
-        for (face, rot, typ) in &Self::load_table("data_1")[self.scan_edges() as usize] {
+
+        for (face, rot, typ) in table_1[&self.key_gen_1()]
+            .iter()
+            .map(|mv| Self::u8_2_mov(*mv))
+        {
             //a factoriser
             print!(
                 "{}{} ",
@@ -198,8 +231,36 @@ impl<'a> Solver<'a> {
                     rot.to_string().bright_red()
                 }
             );
-            self.cube.rotate(*face, *rot, *typ);
+            self.cube.rotate(face, rot, typ);
         }
         println!("\n\n{}", self.cube);
+             */
+
+        /*
+        //capacity ?
+        let mut table_2: HashMap<u32, Vec<u8>> = HashMap::with_capacity(6561);
+
+        table_2.load("table_2");
+
+        print!("{}", "PHASE 2: ".bright_green());
+
+        for (face, rot, typ) in table_2[&self.key_gen_2()]
+            .iter()
+            .map(|mv| Self::u8_2_mov(*mv))
+        {
+            //a factoriser
+            print!(
+                "{}{} ",
+                face.to_string().bright_yellow(),
+                if let Dual = typ {
+                    "2".bright_red()
+                } else {
+                    rot.to_string().bright_red()
+                }
+            );
+            self.cube.rotate(face, rot, typ);
+        }
+        println!("\n\n{}", self.cube);
+        */
     }
 }

@@ -468,6 +468,6 @@ fn main() {
     let mut cube = Cube::new();
 
     app_init(&mut cube);
-    let mut solver = Solver::new(&mut cube);
+    let mut solver = Solver::new(cube);
     solver.solve();
 }

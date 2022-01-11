@@ -1,28 +1,23 @@
 use super::*;
+use crossbeam::thread;
 use serde::{de::DeserializeOwned, Serialize};
-use std::collections::HashMap;
-use std::fs;
-use std::hash::Hash;
+use std::{collections::HashMap, fs, hash::Hash, mem::size_of};
+use LoadStep::*;
+
+#[derive(Clone, Copy)]
+enum LoadStep {
+    InKey,
+    InSize,
+    InMove,
+}
 
 trait HashMove<K> {
-    fn ins_min(&mut self, key: K, comb: &Vec<(Face, Rotation, RotType)>);
+    fn ins_min(&mut self, key: K, comb: Vec<u8>);
     fn get_moves(&self, key: K) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
     fn save(&self, file: &str);
     fn load(&mut self, file: &str);
     fn disp(&self, key: K, title: &str);
     fn exec(&self, key: K, cube: &mut Cube);
-
-    fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
-        ((face as u8) << 4) | ((rot as u8) << 1) | (typ as u8)
-    }
-    fn comb_2_rev_u8(comb: &Vec<(Face, Rotation, RotType)>) -> Vec<u8> {
-        comb.iter()
-            .rev()
-            .map(|(face, rot, typ)| {
-                Self::mov_2_u8(*face, if let Cw = *rot { Ccw } else { Cw }, *typ)
-            })
-            .collect()
-    }
     fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
         (
             Face::FACE_SET[(mov >> 4) as usize],
@@ -34,17 +29,17 @@ trait HashMove<K> {
 
 impl<K> HashMove<K> for HashMap<K, Vec<u8>>
 where
-    K: Eq + Hash + Serialize + DeserializeOwned,
+    K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned,
 {
-    fn ins_min(&mut self, key: K, comb: &Vec<(Face, Rotation, RotType)>) {
+    fn ins_min(&mut self, key: K, comb: Vec<u8>) {
         match self.get_mut(&key) {
             Some(val) => {
                 if val.len() > comb.len() {
-                    *val = Self::comb_2_rev_u8(comb);
+                    *val = comb;
                 }
             }
             None => {
-                self.insert(key, Self::comb_2_rev_u8(comb));
+                self.insert(key, comb);
             }
         }
     }
@@ -54,13 +49,56 @@ where
     }
 
     fn save(&self, file: &str) {
-        fs::write(file, bincode::serialize(self).unwrap()).unwrap();
+        let mut bin: Vec<u8> = Vec::new();
+
+        for (k, v) in self {
+            for b in bincode::serialize(&k).unwrap() {
+                bin.push(b);
+            }
+            bin.push(v.len() as u8);
+            for m in v {
+                bin.push(*m);
+            }
+        }
+        fs::write(file, bin).unwrap();
     }
 
     fn load(&mut self, file: &str) {
-        let bin = fs::read(file).unwrap();
+        let mut key: Vec<u8> = Vec::with_capacity(size_of::<K>());
+        let mut size: usize = 0;
+        let mut movs: Vec<u8> = Vec::new();
+        let mut step = InKey;
 
-        *self = bincode::deserialize(&bin).unwrap();
+        for byte in fs::read(file).unwrap() {
+            match step {
+                InKey => {
+                    key.push(byte);
+                    if key.len() == size_of::<K>() {
+                        step = InSize;
+                    }
+                }
+                InSize => {
+                    size = byte as usize;
+                    step = if size > 0 {
+                        InMove
+                    } else {
+                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
+                        key.clear();
+                        InKey
+                    };
+                }
+                InMove => {
+                    movs.push(byte);
+                    size -= 1;
+                    if size == 0 {
+                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
+                        key.clear();
+                        movs.clear();
+                        step = InKey;
+                    }
+                }
+            }
+        }
     }
 
     fn disp(&self, key: K, title: &str) {
@@ -86,13 +124,13 @@ where
     }
 }
 
-pub struct Solver<'a> {
+pub struct Solver {
     mov_stack: Vec<(Face, Rotation, RotType)>,
-    cube: &'a mut Cube,
+    cube: Cube,
 }
 
-impl<'a, 'de> Solver<'a> {
-    pub fn new(cube: &mut Cube) -> Solver {
+impl<'de> Solver {
+    pub fn new(cube: Cube) -> Solver {
         Solver {
             mov_stack: Vec::with_capacity(128),
             cube,
@@ -189,6 +227,19 @@ impl<'a, 'de> Solver<'a> {
         result
     }
 
+    fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
+        ((face as u8) << 4) | ((rot as u8) << 1) | (typ as u8)
+    }
+
+    fn comb_2_rev_u8(comb: &Vec<(Face, Rotation, RotType)>) -> Vec<u8> {
+        comb.iter()
+            .rev()
+            .map(|(face, rot, typ)| {
+                Self::mov_2_u8(*face, if let Cw = *rot { Ccw } else { Cw }, *typ)
+            })
+            .collect()
+    }
+
     fn rec_search<K>(
         &mut self,
         sol: &mut HashMap<K, Vec<u8>>,
@@ -196,9 +247,9 @@ impl<'a, 'de> Solver<'a> {
         set_sz: usize,
         rank: usize,
     ) where
-        K: Eq + Hash + Serialize + DeserializeOwned,
+        K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned,
     {
-        sol.ins_min(key_gen(self), &mut self.mov_stack);
+        sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
         if rank > 0 {
             for (face, rot, typ) in Cube::MOV_SET[..set_sz].iter() {
                 self.do_mov(*face, *rot, *typ);
@@ -208,47 +259,65 @@ impl<'a, 'de> Solver<'a> {
         }
     }
 
-    pub fn extract_table_1(&mut self) {
-        //capacity ?
-        let mut table: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2048);
+    fn mt_search<K>(file: &str, key_gen: fn(&mut Self) -> K, set_sz: usize, rank: usize, cap: usize)
+    where
+        K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned + std::marker::Send,
+    {
+        thread::scope(|s| {
+            let mut thrds = Vec::with_capacity(set_sz);
+            let mut result: HashMap<K, Vec<u8>> = HashMap::with_capacity(cap);
 
-        self.rec_search(&mut table, Self::key_gen_1, Cube::MOV_SET.len(), 7);
-        table.save("table_1");
-    }
+            for (face, rot, typ) in &Cube::MOV_SET[..set_sz] {
+                thrds.push(s.spawn(|_| {
+                    let mut solver = Solver::new(Cube::new());
+                    let mut table: HashMap<K, Vec<u8>> = HashMap::with_capacity(cap);
 
-    pub fn extract_table_2(&mut self) {
-        //capacity ?
-        let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
+                    table.ins_min(key_gen(&mut solver), Self::comb_2_rev_u8(&solver.mov_stack));
+                    solver.do_mov(*face, *rot, *typ);
+                    solver.rec_search(&mut table, key_gen, set_sz, rank - 1);
+                    table
+                }));
+            }
 
-        self.rec_search(&mut table, Self::key_gen_2, Cube::MOV_SET.len() - 4, 10);
-        table.save("table_2");
-    }
-
-    pub fn extract_table_3(&mut self) {
-        //capacity ?
-        let mut table: HashMap<u16, Vec<u8>> = HashMap::with_capacity(29_400);
-
-        self.rec_search(&mut table, Self::key_gen_3, Cube::MOV_SET.len() - 8, 13);
-        table.save("table_3");
+            for thrd in thrds {
+                for (key, val) in thrd.join().unwrap() {
+                    result.ins_min(key, val);
+                }
+            }
+            println!("{}", result.len());
+            result.save(file);
+        })
+        .unwrap();
     }
 
     pub fn solve(&mut self) {
-        //  self.extract_table_1();
-        // self.extract_table_2();
-        // self.extract_table_3();
-        println!("{:012b}", self.key_gen_1());
-        println!("{:036b}", self.key_gen_2());
-        println!("{:016b}", self.key_gen_3());
+        Self::mt_search("mt_table_1", Self::key_gen_1, Cube::MOV_SET.len(), 7, 2_048);
+        println!("table_1 completed");
+        Self::mt_search(
+            "mt_table_2",
+            Self::key_gen_2,
+            Cube::MOV_SET.len(),
+            10,
+            1_082_565,
+        );
+        println!("table_2 completed");
+        Self::mt_search(
+            "mt_table_3",
+            Self::key_gen_3,
+            Cube::MOV_SET.len(),
+            13,
+            29_400,
+        );
+        println!("table_3 completed");
 
         /*
         //capacity ?
         let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2048);
 
-        table_1.load("table_1");
-
+        table_1.load("mt_table_1");
         let key = self.key_gen_1();
         table_1.disp(key, "PHASE 1");
-        table_1.exec(key, self.cube);
+        table_1.exec(key, &mut self.cube);
         println!("\n\n{}", self.cube);
         */
 

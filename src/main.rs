@@ -5,6 +5,7 @@ use clap::{App, Arg};
 use colored::*;
 use rand::{seq::SliceRandom, Rng};
 use solver::*;
+use std::collections::HashMap;
 use Face::*;
 use MyColor::*;
 use RotType::*;
@@ -175,8 +176,6 @@ impl std::fmt::Display for Cube {
 }
 
 impl Cube {
-    const ROT_CHAINS: [[usize; 4]; 2] = [[0, 2, 8, 6], [1, 5, 7, 3]];
-
     const FACE_CHAINS: [[Face; 4]; 3] = [
         [Up, Right, Down, Left],
         [Up, Front, Down, Back],
@@ -194,18 +193,39 @@ impl Cube {
 
     const COLOR_MAP: [MyColor; 6] = [Blue, Green, White, Yellow, Orange, Red];
 
+    const MOV_SET: [(Face, Rotation, RotType); 18] = [
+        (Left, Ccw, Dual),
+        (Right, Ccw, Dual),
+        (Front, Ccw, Dual),
+        (Back, Ccw, Dual),
+        (Up, Ccw, Dual),
+        (Down, Ccw, Dual),
+        (Left, Ccw, Single),
+        (Right, Ccw, Single),
+        (Left, Cw, Single),
+        (Right, Cw, Single),
+        (Front, Ccw, Single),
+        (Back, Ccw, Single),
+        (Front, Cw, Single),
+        (Back, Cw, Single),
+        (Up, Ccw, Single),
+        (Down, Ccw, Single),
+        (Up, Cw, Single),
+        (Down, Cw, Single),
+    ];
+
     fn new() -> Self {
         Self {
             ids: (0..27).collect(),
             subs: [
                 Corner([Left, Back, Up], [Orange, Yellow, Blue]),
-                Edge([Up, Back], [Blue, Yellow]),
+                Edge([Back, Up], [Yellow, Blue]),
                 Corner([Right, Up, Back], [Red, Blue, Yellow]),
                 Edge([Left, Up], [Orange, Blue]),
                 Center(Up, Blue),
                 Edge([Right, Up], [Red, Blue]),
                 Corner([Left, Up, Front], [Orange, Blue, White]),
-                Edge([Up, Front], [Blue, White]),
+                Edge([Front, Up], [White, Blue]),
                 Corner([Right, Front, Up], [Red, White, Blue]),
                 Edge([Left, Back], [Orange, Yellow]),
                 Center(Back, Yellow),
@@ -217,13 +237,13 @@ impl Cube {
                 Center(Front, White),
                 Edge([Right, Front], [Red, White]),
                 Corner([Left, Down, Back], [Orange, Green, Yellow]),
-                Edge([Down, Back], [Green, Yellow]),
+                Edge([Back, Down], [Yellow, Green]),
                 Corner([Right, Back, Down], [Red, Yellow, Green]),
                 Edge([Left, Down], [Orange, Green]),
                 Center(Down, Green),
                 Edge([Right, Down], [Red, Green]),
                 Corner([Left, Front, Down], [Orange, White, Green]),
-                Edge([Down, Front], [Green, White]),
+                Edge([Front, Down], [White, Green]),
                 Corner([Right, Down, Front], [Red, Green, White]),
             ],
         }
@@ -287,7 +307,7 @@ impl Cube {
         };
 
         let win_size = if let Dual = rot_type { 3 } else { 2 };
-        for chain in Self::ROT_CHAINS {
+        for chain in [[0_usize, 2, 8, 6], [1, 5, 7, 3]] {
             for swap in if rev {
                 Box::new(chain.windows(win_size).rev()) as Box<dyn Iterator<Item = &[usize]>>
             } else {
@@ -363,10 +383,34 @@ fn new_app() -> App<'static> {
                 .short('r')
                 .default_missing_value("50")
                 .min_values(0)
+                .max_values(1)
                 .require_equals(true)
                 .value_name("NB")
                 .validator(|arg| usize::from_str_radix(arg, 10))
                 .help("Shuffle cube with optional number of random moves (default 50)"),
+        )
+        .arg(
+            Arg::new("group")
+                .requires("rand")
+                .conflicts_with_all(&["MOVES", "new"])
+                .long("group")
+                .short('g')
+                .default_value("0")
+                .min_values(1)
+                .max_values(1)
+                .require_equals(true)
+                .value_name("GR")
+                .validator(|arg| match usize::from_str_radix(arg, 10) {
+                    Ok(val) => {
+                        if val > 3 {
+                            Err("Unknown group")
+                        } else {
+                            Ok(())
+                        }
+                    }
+                    Err(e) => Err("Not a valid number"),
+                })
+                .help("Select group of allowed moves when the cube is randomly shuffled (0-3)"),
         )
         .arg(
             Arg::new("new")
@@ -387,11 +431,11 @@ fn app_init(cube: &mut Cube) {
             Box::new(
                 (0..usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap()).map(
                     move |_| {
-                        (
-                            *Face::FACE_SET.choose(&mut rng).unwrap(),
-                            *Rotation::ROT_SET.choose(&mut rng).unwrap(),
-                            if rng.gen_bool(0.2) { Dual } else { Single },
-                        )
+                        *Cube::MOV_SET[..Cube::MOV_SET.len()
+                            - usize::from_str_radix(cmd.value_of("group").unwrap(), 10).unwrap()
+                                * 4]
+                            .choose(&mut rng)
+                            .unwrap()
                     },
                 ),
             ) as Box<dyn Iterator<Item = (Face, Rotation, RotType)>>
@@ -403,6 +447,7 @@ fn app_init(cube: &mut Cube) {
                     .map(|mov| mov_parser(mov).unwrap()),
             ) as Box<dyn Iterator<Item = (Face, Rotation, RotType)>>
         } {
+            //a factoriser
             print!(
                 "{}{} ",
                 face.to_string().bright_yellow(),

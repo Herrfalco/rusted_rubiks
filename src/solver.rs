@@ -227,6 +227,24 @@ impl<'de> Solver {
         result
     }
 
+    //OK
+    //40bit key
+    fn key_gen_4(&mut self) -> u64 {
+        let mut result = 0;
+
+        for sub in &self.cube.subs {
+            let (dir_1, dir_2, col_1, col_2) = match sub {
+                Corner(dirs, cols) => (dirs[0], dirs[1], cols[0], cols[1]),
+                Edge(dirs, cols) => (dirs[0], dirs[1], cols[0], cols[1]),
+                _ => continue,
+            };
+            result = (result << 2)
+                | (((col_1 != Cube::COLOR_MAP[dir_1 as usize]) as u64) << 1)
+                | ((col_2 != Cube::COLOR_MAP[dir_2 as usize]) as u64)
+        }
+        result
+    }
+
     fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
         ((face as u8) << 4) | ((rot as u8) << 1) | (typ as u8)
     }
@@ -289,7 +307,7 @@ impl<'de> Solver {
         .unwrap();
     }
 
-    pub fn solve(&mut self) {
+    pub fn table_search() {
         Self::mt_search("mt_table_1", Self::key_gen_1, Cube::MOV_SET.len(), 7, 2_048);
         println!("table_1 completed");
         Self::mt_search(
@@ -308,9 +326,11 @@ impl<'de> Solver {
             29_400,
         );
         println!("table_3 completed");
+    }
 
-        /*
+    pub fn solve(&mut self) {
         //capacity ?
+        /*
         let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2048);
 
         table_1.load("mt_table_1");

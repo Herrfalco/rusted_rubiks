@@ -366,56 +366,39 @@ fn new_app() -> App<'static> {
         .author("Cadet Florian, cadet.florian@gmail.com")
         .arg(
             Arg::new("MOVES")
-                .index(1)
                 .validator(input_checker)
-                .conflicts_with_all(&["rand", "new"])
+                .exclusive(true)
                 .required_unless_present_any(&["rand", "new"])
                 .help(
-                    "Takes a string of face rotations splited by whitespaces.\n\
+                    "Face rotations splited by whitespaces.\n\
                     U, D, F, B, L, R for Up, Down, Front, Back, Left and Right\n\
-                    (add 2 for half turn and ' for counterclockwise rotation)",
+                    (append 2 for half turn and ' for counterclockwise)",
                 ),
         )
         .arg(
             Arg::new("rand")
-                .conflicts_with("new")
                 .long("rand")
                 .short('r')
-                .default_missing_value("50")
-                .min_values(0)
-                .max_values(1)
+                .help("<NB> of random moves")
                 .require_equals(true)
                 .value_name("NB")
-                .validator(|arg| usize::from_str_radix(arg, 10))
-                .help("Shuffle cube with optional number of random moves (default 50)"),
+                .validator(|arg| usize::from_str_radix(arg, 10)),
         )
         .arg(
             Arg::new("group")
-                .requires("rand")
-                .conflicts_with_all(&["MOVES", "new"])
                 .long("group")
                 .short('g')
-                .default_value("0")
-                .min_values(1)
-                .max_values(1)
+                .requires("rand")
+                .help("Allowed moves when the cube is shuffled")
                 .require_equals(true)
                 .value_name("GR")
-                .validator(|arg| match usize::from_str_radix(arg, 10) {
-                    Ok(val) => {
-                        if val > 3 {
-                            Err("Unknown group")
-                        } else {
-                            Ok(())
-                        }
-                    }
-                    Err(e) => Err("Not a valid number"),
-                })
-                .help("Select group of allowed moves when the cube is randomly shuffled (0-3)"),
+                .possible_values(["0", "1", "2", "3"]),
         )
         .arg(
             Arg::new("new")
                 .long("new")
                 .short('n')
+                .conflicts_with("rand")
                 .help("Start with an unaltered cube"),
         )
 }
@@ -432,7 +415,8 @@ fn app_init(cube: &mut Cube) {
                 (0..usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap()).map(
                     move |_| {
                         *Cube::MOV_SET[..Cube::MOV_SET.len()
-                            - usize::from_str_radix(cmd.value_of("group").unwrap(), 10).unwrap()
+                            - usize::from_str_radix(cmd.value_of("group").unwrap_or("0"), 10)
+                                .unwrap()
                                 * 4]
                             .choose(&mut rng)
                             .unwrap()

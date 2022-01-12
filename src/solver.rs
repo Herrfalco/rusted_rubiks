@@ -284,7 +284,6 @@ impl<'de> Solver {
                     result.ins_min(key, val);
                 }
             }
-            println!("{}", result.len());
             result.save(file);
         })
         .unwrap();
@@ -296,7 +295,7 @@ impl<'de> Solver {
         Self::mt_search(
             "mt_table_2",
             Self::key_gen_2,
-            Cube::MOV_SET.len(),
+            Cube::MOV_SET.len() - 4,
             10,
             1_082_565,
         );
@@ -304,7 +303,7 @@ impl<'de> Solver {
         Self::mt_search(
             "mt_table_3",
             Self::key_gen_3,
-            Cube::MOV_SET.len(),
+            Cube::MOV_SET.len() - 8,
             13,
             29_400,
         );

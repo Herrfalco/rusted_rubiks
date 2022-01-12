@@ -151,7 +151,7 @@ impl<'de> Solver {
     }
 
     //12bit key
-    fn key_gen_1(&mut self) -> u16 {
+    fn key_gen_1(&self) -> u16 {
         let mut result: u16 = 0;
 
         for (face_i, face) in Cube::FACE_CHAINS[2].iter().enumerate() {
@@ -160,7 +160,7 @@ impl<'de> Solver {
                 _ => [1, 5, 7],
             } {
                 if let Edge(dir, col) =
-                    &mut self.cube.subs[self.cube.ids[Cube::FACE_MAP[*face as usize][idx]]]
+                    &self.cube.subs[self.cube.ids[Cube::FACE_MAP[*face as usize][idx]]]
                 {
                     let (face_j, col_i) = Cube::FACE_CHAINS[2]
                         .iter()
@@ -185,7 +185,7 @@ impl<'de> Solver {
     }
 
     //36bit key
-    fn key_gen_2(&mut self) -> u64 {
+    fn key_gen_2(&self) -> u64 {
         let mut result = 0;
 
         for id in 0..27 {
@@ -204,7 +204,7 @@ impl<'de> Solver {
     }
 
     //16bit key
-    fn key_gen_3(&mut self) -> u16 {
+    fn key_gen_3(&self) -> u16 {
         let mut result = 0;
 
         for face in &Cube::FACE_MAP[4..] {
@@ -227,9 +227,8 @@ impl<'de> Solver {
         result
     }
 
-    //OK
     //40bit key
-    fn key_gen_4(&mut self) -> u64 {
+    fn key_gen_4(&self) -> u64 {
         let mut result = 0;
 
         for sub in &self.cube.subs {
@@ -261,7 +260,7 @@ impl<'de> Solver {
     fn rec_search<K>(
         &mut self,
         sol: &mut HashMap<K, Vec<u8>>,
-        key_gen: fn(&mut Self) -> K,
+        key_gen: fn(&Self) -> K,
         set_sz: usize,
         rank: usize,
     ) where
@@ -277,7 +276,7 @@ impl<'de> Solver {
         }
     }
 
-    fn mt_search<K>(file: &str, key_gen: fn(&mut Self) -> K, set_sz: usize, rank: usize, cap: usize)
+    fn mt_search<K>(file: &str, key_gen: fn(&Self) -> K, set_sz: usize, rank: usize, cap: usize)
     where
         K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned + std::marker::Send,
     {
@@ -305,66 +304,27 @@ impl<'de> Solver {
             result.save(file);
         })
         .unwrap();
+        println!("{} completed", file);
     }
 
-    pub fn table_search() {
-        Self::mt_search("mt_table_1", Self::key_gen_1, Cube::MOV_SET.len(), 7, 2_048);
-        println!("table_1 completed");
-        Self::mt_search(
-            "mt_table_2",
-            Self::key_gen_2,
-            Cube::MOV_SET.len() - 4,
-            10,
-            1_082_565,
-        );
-        println!("table_2 completed");
-        Self::mt_search(
-            "mt_table_3",
-            Self::key_gen_3,
-            Cube::MOV_SET.len() - 8,
-            13,
-            29_400,
-        );
-        println!("table_3 completed");
+    pub fn table_search(table_ids: Vec<usize>) {
+        for id in table_ids {
+            match id {
+                1 => Self::mt_search("mt_table_1", Self::key_gen_1, 18, 7, 2_048),
+                2 => Self::mt_search("mt_table_2", Self::key_gen_2, 14, 10, 1_082_565),
+                3 => Self::mt_search("mt_table_3", Self::key_gen_3, 10, 13, 29_400),
+                4 => Self::mt_search("mt_table_4", Self::key_gen_4, 6, 15, 663_552),
+                _ => panic!("unknown table"),
+            };
+        }
     }
 
     pub fn solve(&mut self) {
-        //capacity ?
-        /*
-        let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2048);
-
+        let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
         table_1.load("mt_table_1");
         let key = self.key_gen_1();
         table_1.disp(key, "PHASE 1");
         table_1.exec(key, &mut self.cube);
         println!("\n\n{}", self.cube);
-        */
-
-        /*
-        //capacity ?
-        let mut table_2: HashMap<u32, Vec<u8>> = HashMap::with_capacity(6561);
-
-        table_2.load("table_2");
-
-        print!("{}", "PHASE 2: ".bright_green());
-
-        for (face, rot, typ) in table_2[&self.key_gen_2()]
-            .iter()
-            .map(|mv| Self::u8_2_mov(*mv))
-        {
-            //a factoriser
-            print!(
-                "{}{} ",
-                face.to_string().bright_yellow(),
-                if let Dual = typ {
-                    "2".bright_red()
-                } else {
-                    rot.to_string().bright_red()
-                }
-            );
-            self.cube.rotate(face, rot, typ);
-        }
-        println!("\n\n{}", self.cube);
-        */
     }
 }

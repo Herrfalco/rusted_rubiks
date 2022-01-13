@@ -187,8 +187,10 @@ impl<'de> Solver {
     //36bit key
     fn key_gen_2(&self) -> u64 {
         let mut result = 0;
+        let mut id;
 
-        for id in 0..27 {
+        for pos in 0..27 {
+            id = self.cube.ids[pos];
             result = match self.cube.subs[id] {
                 Corner(dirs, cols) => (result << 3) | dirs[0] as u64,
                 Edge(dirs, cols) => {
@@ -320,11 +322,20 @@ impl<'de> Solver {
     }
 
     pub fn solve(&mut self) {
-        let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
-        table_1.load("mt_table_1");
-        let key = self.key_gen_1();
-        table_1.disp(key, "PHASE 1");
-        table_1.exec(key, &mut self.cube);
+        {
+            let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
+            table_1.load("mt_table_1");
+            let key = self.key_gen_1();
+            table_1.disp(key, "PHASE 1");
+            table_1.exec(key, &mut self.cube);
+            println!("\n\n{}", self.cube);
+        }
+
+        let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
+        table_2.load("mt_table_2");
+        let key = self.key_gen_2();
+        table_2.disp(key, "PHASE 2");
+        table_2.exec(key, &mut self.cube);
         println!("\n\n{}", self.cube);
     }
 }

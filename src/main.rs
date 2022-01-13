@@ -454,6 +454,5 @@ fn main() {
     app_init(&mut cube);
     let mut solver = Solver::new(cube);
 
-    Solver::table_search(vec![1]);
     solver.solve();
 }

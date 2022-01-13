@@ -330,12 +330,13 @@ impl<'de> Solver {
             table_1.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
-
-        let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
-        table_2.load("mt_table_2");
-        let key = self.key_gen_2();
-        table_2.disp(key, "PHASE 2");
-        table_2.exec(key, &mut self.cube);
-        println!("\n\n{}", self.cube);
+        {
+            let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
+            table_2.load("mt_table_2");
+            let key = self.key_gen_2();
+            table_2.disp(key, "PHASE 2");
+            table_2.exec(key, &mut self.cube);
+            println!("\n\n{}", self.cube);
+        }
     }
 }

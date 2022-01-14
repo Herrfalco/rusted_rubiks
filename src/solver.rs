@@ -1,4 +1,5 @@
 use super::*;
+use compressor::*;
 use crossbeam::thread;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, fs, hash::Hash, mem::size_of};
@@ -14,8 +15,8 @@ enum LoadStep {
 trait HashMove<K> {
     fn ins_min(&mut self, key: K, comb: Vec<u8>);
     fn get_moves(&self, key: K) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
-    fn save(&self, file: &str);
-    fn load(&mut self, file: &str);
+    fn save(&self, file: &str, key_sz: usize);
+    fn load(&mut self, file: &str, key_sz: usize);
     fn disp(&self, key: K, title: &str);
     fn exec(&self, key: K, cube: &mut Cube);
     fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
@@ -29,7 +30,9 @@ trait HashMove<K> {
 
 impl<K> HashMove<K> for HashMap<K, Vec<u8>>
 where
-    K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned,
+    K: Eq + std::fmt::Display + Hash + Copy + std::ops::Shl<Output = K> + TryFrom<u128>,
+    u128: From<K>,
+    <K as TryFrom<u128>>::Error: std::fmt::Debug,
 {
     fn ins_min(&mut self, key: K, comb: Vec<u8>) {
         match self.get_mut(&key) {
@@ -48,56 +51,29 @@ where
         Box::new(self[&key].iter().map(|mv| Self::u8_2_mov(*mv)))
     }
 
-    fn save(&self, file: &str) {
-        let mut bin: Vec<u8> = Vec::new();
+    fn save(&self, file: &str, key_sz: usize) {
+        let mut compressor = Compressor::new();
 
         for (k, v) in self {
-            for b in bincode::serialize(&k).unwrap() {
-                bin.push(b);
-            }
-            bin.push(v.len() as u8);
+            compressor.push(*k, key_sz);
+            compressor.push::<u8>(v.len() as u8, 4);
             for m in v {
-                bin.push(*m);
+                compressor.push::<u8>(*m, 5);
             }
         }
-        fs::write(file, bin).unwrap();
+        compressor.save(file);
     }
 
-    fn load(&mut self, file: &str) {
-        let mut key: Vec<u8> = Vec::with_capacity(size_of::<K>());
-        let mut size: usize = 0;
-        let mut movs: Vec<u8> = Vec::new();
-        let mut step = InKey;
+    fn load(&mut self, file: &str, key_sz: usize) {
+        let mut decompressor = Decompressor::new(file);
 
-        for byte in fs::read(file).unwrap() {
-            match step {
-                InKey => {
-                    key.push(byte);
-                    if key.len() == size_of::<K>() {
-                        step = InSize;
-                    }
-                }
-                InSize => {
-                    size = byte as usize;
-                    step = if size > 0 {
-                        InMove
-                    } else {
-                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
-                        key.clear();
-                        InKey
-                    };
-                }
-                InMove => {
-                    movs.push(byte);
-                    size -= 1;
-                    if size == 0 {
-                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
-                        key.clear();
-                        movs.clear();
-                        step = InKey;
-                    }
-                }
-            }
+        while let Some(key) = decompressor.pop::<K>(key_sz) {
+            self.insert(
+                key,
+                (0..decompressor.pop::<usize>(4).unwrap())
+                    .map(|_| decompressor.pop::<u8>(5).unwrap())
+                    .collect::<Vec<u8>>(),
+            );
         }
     }
 
@@ -247,7 +223,7 @@ impl<'de> Solver {
     }
 
     fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
-        ((face as u8) << 4) | ((rot as u8) << 1) | (typ as u8)
+        ((face as u8) << 3) | ((rot as u8) << 1) | (typ as u8)
     }
 
     fn comb_2_rev_u8(comb: &Vec<(Face, Rotation, RotType)>) -> Vec<u8> {
@@ -266,7 +242,16 @@ impl<'de> Solver {
         set_sz: usize,
         rank: usize,
     ) where
-        K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned,
+        K: Eq
+            + std::fmt::Display
+            + Hash
+            + Copy
+            + Serialize
+            + DeserializeOwned
+            + std::ops::Shl<Output = K>
+            + TryFrom<u128>,
+        <K as TryFrom<u128>>::Error: std::fmt::Debug,
+        u128: From<K>,
     {
         sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
         if rank > 0 {
@@ -278,9 +263,24 @@ impl<'de> Solver {
         }
     }
 
-    fn mt_search<K>(file: &str, key_gen: fn(&Self) -> K, set_sz: usize, rank: usize, cap: usize)
-    where
-        K: Eq + std::fmt::Display + Hash + Copy + Serialize + DeserializeOwned + std::marker::Send,
+    fn mt_search<K>(
+        file: &str,
+        key_gen: (fn(&Self) -> K, usize),
+        set_sz: usize,
+        rank: usize,
+        cap: usize,
+    ) where
+        K: Eq
+            + std::fmt::Display
+            + Hash
+            + Copy
+            + Serialize
+            + DeserializeOwned
+            + std::marker::Send
+            + std::ops::Shl<Output = K>
+            + TryFrom<u128>,
+        <K as TryFrom<u128>>::Error: std::fmt::Debug,
+        u128: From<K>,
     {
         thread::scope(|s| {
             let mut thrds = Vec::with_capacity(set_sz);
@@ -291,9 +291,12 @@ impl<'de> Solver {
                     let mut solver = Solver::new(Cube::new());
                     let mut table: HashMap<K, Vec<u8>> = HashMap::with_capacity(cap);
 
-                    table.ins_min(key_gen(&mut solver), Self::comb_2_rev_u8(&solver.mov_stack));
+                    table.ins_min(
+                        key_gen.0(&mut solver),
+                        Self::comb_2_rev_u8(&solver.mov_stack),
+                    );
                     solver.do_mov(*face, *rot, *typ);
-                    solver.rec_search(&mut table, key_gen, set_sz, rank - 1);
+                    solver.rec_search(&mut table, key_gen.0, set_sz, rank - 1);
                     table
                 }));
             }
@@ -303,7 +306,7 @@ impl<'de> Solver {
                     result.ins_min(key, val);
                 }
             }
-            result.save(file);
+            result.save(file, key_gen.1);
         })
         .unwrap();
         println!("{} completed", file);
@@ -312,31 +315,35 @@ impl<'de> Solver {
     pub fn table_search(table_ids: Vec<usize>) {
         for id in table_ids {
             match id {
-                1 => Self::mt_search("mt_table_1", Self::key_gen_1, 18, 7, 2_048),
-                2 => Self::mt_search("mt_table_2", Self::key_gen_2, 14, 10, 1_082_565),
-                3 => Self::mt_search("mt_table_3", Self::key_gen_3, 10, 13, 29_400),
-                4 => Self::mt_search("mt_table_4", Self::key_gen_4, 6, 15, 663_552),
+                1 => Self::mt_search("mt_table_1", (Self::key_gen_1, 12), 18, 7, 2_048),
+                2 => Self::mt_search("mt_table_2", (Self::key_gen_2, 36), 14, 10, 1_082_565),
+                3 => Self::mt_search("mt_table_3", (Self::key_gen_3, 16), 10, 13, 29_400),
+                4 => Self::mt_search("mt_table_4", (Self::key_gen_4, 40), 6, 15, 663_552),
                 _ => panic!("unknown table"),
             };
         }
     }
 
     pub fn solve(&mut self) {
+        Self::table_search(vec![1]);
         {
             let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
-            table_1.load("mt_table_1");
+            table_1.load("mt_table_1", 12);
+            println!("table_1.len() = {}", table_1.len());
             let key = self.key_gen_1();
             table_1.disp(key, "PHASE 1");
             table_1.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
+        /*
         {
             let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
-            table_2.load("mt_table_2");
+            table_2.load("mt_table_2", 36);
             let key = self.key_gen_2();
             table_2.disp(key, "PHASE 2");
             table_2.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
+        */
     }
 }

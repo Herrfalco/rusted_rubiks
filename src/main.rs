@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_imports, unused_variables)]
+mod compressor;
 mod solver;
-mod writer;
 
 use clap::{App, Arg};
 use colored::*;

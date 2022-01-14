@@ -17,6 +17,7 @@ trait HashMove<K> {
     fn get_moves(&self, key: K) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
     fn save(&self, file: &str, key_sz: usize);
     fn load(&mut self, file: &str, key_sz: usize);
+    fn old_load(&mut self, file: &str);
     fn disp(&self, key: K, title: &str);
     fn exec(&self, key: K, cube: &mut Cube);
     fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
@@ -26,11 +27,21 @@ trait HashMove<K> {
             RotType::TYPE_SET[(mov & 0b1) as usize],
         )
     }
+    fn old_u8_2_u8(mov: u8) -> u8 {
+        (mov & 0x3) | ((mov & 0xf0) >> 2)
+    }
 }
 
 impl<K> HashMove<K> for HashMap<K, Vec<u8>>
 where
-    K: Eq + std::fmt::Display + Hash + Copy + std::ops::Shl<Output = K> + TryFrom<u128>,
+    K: Eq
+        + std::fmt::Display
+        + Hash
+        + Copy
+        + std::ops::Shl<Output = K>
+        + TryFrom<u128>
+        + Serialize
+        + DeserializeOwned,
     u128: From<K>,
     <K as TryFrom<u128>>::Error: std::fmt::Debug,
 {
@@ -62,6 +73,49 @@ where
             }
         }
         compressor.save(file);
+    }
+
+    fn old_load(&mut self, file: &str) {
+        let mut key: Vec<u8> = Vec::with_capacity(size_of::<K>());
+        let mut size: usize = 0;
+        let mut movs: Vec<u8> = Vec::new();
+        let mut step = InKey;
+
+        for byte in fs::read(file).unwrap() {
+            match step {
+                InKey => {
+                    key.push(byte);
+                    if key.len() == size_of::<K>() {
+                        step = InSize;
+                    }
+                }
+                InSize => {
+                    size = byte as usize;
+                    step = if size > 0 {
+                        InMove
+                    } else {
+                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
+                        key.clear();
+                        InKey
+                    };
+                }
+                InMove => {
+                    movs.push(byte);
+                    size -= 1;
+                    if size == 0 {
+                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
+                        key.clear();
+                        movs.clear();
+                        step = InKey;
+                    }
+                }
+            }
+        }
+        for (k, v) in self {
+            for m in v {
+                *m = Self::old_u8_2_u8(*m);
+            }
+        }
     }
 
     fn load(&mut self, file: &str, key_sz: usize) {
@@ -348,7 +402,6 @@ impl<'de> Solver {
             table_1.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
-        /*
         {
             let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
             table_2.load("mt_table_2", 36);
@@ -357,6 +410,5 @@ impl<'de> Solver {
             table_2.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
-        */
     }
 }

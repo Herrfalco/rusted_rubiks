@@ -223,7 +223,7 @@ impl<'de> Solver {
     }
 
     fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
-        ((face as u8) << 3) | ((rot as u8) << 1) | (typ as u8)
+        ((face as u8) << 2) | ((rot as u8) << 1) | (typ as u8)
     }
 
     fn comb_2_rev_u8(comb: &Vec<(Face, Rotation, RotType)>) -> Vec<u8> {
@@ -256,6 +256,7 @@ impl<'de> Solver {
         sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
         if rank > 0 {
             for (face, rot, typ) in Cube::MOV_SET[..set_sz].iter() {
+                /*
                 if *self.mov_stack.last().unwrap()
                     != (
                         *face,
@@ -269,10 +270,13 @@ impl<'de> Solver {
                         *typ,
                     )
                 {
-                    self.do_mov(*face, *rot, *typ);
-                    self.rec_search(sol, key_gen, set_sz, rank - 1);
-                    self.undo_mov();
+                */
+                self.do_mov(*face, *rot, *typ);
+                self.rec_search(sol, key_gen, set_sz, rank - 1);
+                self.undo_mov();
+                /*
                 }
+                    */
             }
         }
     }
@@ -339,11 +343,10 @@ impl<'de> Solver {
     }
 
     pub fn solve(&mut self) {
-        Self::table_search(vec![1]);
+        //Self::table_search(vec![1]);
         {
             let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
             table_1.load("mt_table_1", 12);
-            println!("table_1.len() = {}", table_1.len());
             let key = self.key_gen_1();
             table_1.disp(key, "PHASE 1");
             table_1.exec(key, &mut self.cube);

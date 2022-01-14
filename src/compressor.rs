@@ -66,7 +66,6 @@ impl Decompressor {
         <T as TryFrom<u128>>::Error: std::fmt::Debug,
     {
         if size > (self.len + self.bin.len() * 8) {
-            println!("{} > {}", size, self.len + self.bin.len() * 8);
             return None;
         }
         self.fetch_until(size);

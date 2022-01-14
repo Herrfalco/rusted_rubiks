@@ -256,9 +256,23 @@ impl<'de> Solver {
         sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
         if rank > 0 {
             for (face, rot, typ) in Cube::MOV_SET[..set_sz].iter() {
-                self.do_mov(*face, *rot, *typ);
-                self.rec_search(sol, key_gen, set_sz, rank - 1);
-                self.undo_mov();
+                if *self.mov_stack.last().unwrap()
+                    != (
+                        *face,
+                        if *typ == Dual {
+                            *rot
+                        } else if *rot == Cw {
+                            Ccw
+                        } else {
+                            Cw
+                        },
+                        *typ,
+                    )
+                {
+                    self.do_mov(*face, *rot, *typ);
+                    self.rec_search(sol, key_gen, set_sz, rank - 1);
+                    self.undo_mov();
+                }
             }
         }
     }

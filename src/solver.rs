@@ -21,7 +21,7 @@ trait HashMove<K> {
     fn exec(&self, key: K, cube: &mut Cube);
     fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
         (
-            Face::FACE_SET[(mov >> 4) as usize],
+            Face::FACE_SET[(mov >> 2) as usize],
             Rotation::ROT_SET[((mov >> 1) & 0b1) as usize],
             RotType::TYPE_SET[(mov & 0b1) as usize],
         )
@@ -256,7 +256,6 @@ impl<'de> Solver {
         sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
         if rank > 0 {
             for (face, rot, typ) in Cube::MOV_SET[..set_sz].iter() {
-                /*
                 if *self.mov_stack.last().unwrap()
                     != (
                         *face,
@@ -270,13 +269,10 @@ impl<'de> Solver {
                         *typ,
                     )
                 {
-                */
-                self.do_mov(*face, *rot, *typ);
-                self.rec_search(sol, key_gen, set_sz, rank - 1);
-                self.undo_mov();
-                /*
+                    self.do_mov(*face, *rot, *typ);
+                    self.rec_search(sol, key_gen, set_sz, rank - 1);
+                    self.undo_mov();
                 }
-                    */
             }
         }
     }

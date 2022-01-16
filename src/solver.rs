@@ -1,7 +1,7 @@
 use super::*;
 use compressor::*;
 use crossbeam::thread;
-use serde::{de::DeserializeOwned, Serialize};
+//use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, fs, hash::Hash, mem::size_of};
 use LoadStep::*;
 
@@ -17,7 +17,7 @@ trait HashMove<K> {
     fn get_moves(&self, key: K) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
     fn save(&self, file: &str, key_sz: usize);
     fn load(&mut self, file: &str, key_sz: usize);
-    fn old_load(&mut self, file: &str);
+    //    fn old_load(&mut self, file: &str);
     fn disp(&self, key: K, title: &str);
     fn exec(&self, key: K, cube: &mut Cube);
     fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
@@ -27,21 +27,16 @@ trait HashMove<K> {
             RotType::TYPE_SET[(mov & 0b1) as usize],
         )
     }
+    /*
     fn old_u8_2_u8(mov: u8) -> u8 {
         (mov & 0x3) | ((mov & 0xf0) >> 2)
     }
+    */
 }
 
 impl<K> HashMove<K> for HashMap<K, Vec<u8>>
 where
-    K: Eq
-        + std::fmt::Display
-        + Hash
-        + Copy
-        + std::ops::Shl<Output = K>
-        + TryFrom<u128>
-        + Serialize
-        + DeserializeOwned,
+    K: Eq + std::fmt::Display + Hash + Copy + std::ops::Shl<Output = K> + TryFrom<u128>,
     u128: From<K>,
     <K as TryFrom<u128>>::Error: std::fmt::Debug,
 {
@@ -75,6 +70,7 @@ where
         compressor.save(file);
     }
 
+    /*
     fn old_load(&mut self, file: &str) {
         let mut key: Vec<u8> = Vec::with_capacity(size_of::<K>());
         let mut size: usize = 0;
@@ -117,6 +113,7 @@ where
             }
         }
     }
+    */
 
     fn load(&mut self, file: &str, key_sz: usize) {
         let mut decompressor = Decompressor::new(file);
@@ -296,33 +293,14 @@ impl<'de> Solver {
         set_sz: usize,
         rank: usize,
     ) where
-        K: Eq
-            + std::fmt::Display
-            + Hash
-            + Copy
-            + Serialize
-            + DeserializeOwned
-            + std::ops::Shl<Output = K>
-            + TryFrom<u128>,
+        K: Eq + std::fmt::Display + Hash + Copy + std::ops::Shl<Output = K> + TryFrom<u128>,
         <K as TryFrom<u128>>::Error: std::fmt::Debug,
         u128: From<K>,
     {
         sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
         if rank > 0 {
             for (face, rot, typ) in Cube::MOV_SET[..set_sz].iter() {
-                if *self.mov_stack.last().unwrap()
-                    != (
-                        *face,
-                        if *typ == Dual {
-                            *rot
-                        } else if *rot == Cw {
-                            Ccw
-                        } else {
-                            Cw
-                        },
-                        *typ,
-                    )
-                {
+                if self.mov_stack.last().unwrap().0 != *face {
                     self.do_mov(*face, *rot, *typ);
                     self.rec_search(sol, key_gen, set_sz, rank - 1);
                     self.undo_mov();
@@ -342,8 +320,6 @@ impl<'de> Solver {
             + std::fmt::Display
             + Hash
             + Copy
-            + Serialize
-            + DeserializeOwned
             + std::marker::Send
             + std::ops::Shl<Output = K>
             + TryFrom<u128>,
@@ -359,10 +335,7 @@ impl<'de> Solver {
                     let mut solver = Solver::new(Cube::new());
                     let mut table: HashMap<K, Vec<u8>> = HashMap::with_capacity(cap);
 
-                    table.ins_min(
-                        key_gen.0(&mut solver),
-                        Self::comb_2_rev_u8(&solver.mov_stack),
-                    );
+                    table.ins_min(key_gen.0(&mut solver), vec![]);
                     solver.do_mov(*face, *rot, *typ);
                     solver.rec_search(&mut table, key_gen.0, set_sz, rank - 1);
                     table
@@ -397,6 +370,7 @@ impl<'de> Solver {
         {
             let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
             table_1.load("mt_table_1", 12);
+            println!("table_1: {}", table_1.len());
             let key = self.key_gen_1();
             table_1.disp(key, "PHASE 1");
             table_1.exec(key, &mut self.cube);
@@ -405,6 +379,7 @@ impl<'de> Solver {
         {
             let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
             table_2.load("mt_table_2", 36);
+            println!("table_2: {}", table_2.len());
             let key = self.key_gen_2();
             table_2.disp(key, "PHASE 2");
             table_2.exec(key, &mut self.cube);

@@ -132,15 +132,7 @@ where
         print!("{}", format!("{}: ", title).bright_green());
 
         for (face, rot, typ) in self.get_moves(key) {
-            print!(
-                "{}{} ",
-                face.to_string().bright_yellow(),
-                if let Dual = typ {
-                    "2".bright_red()
-                } else {
-                    rot.to_string().bright_red()
-                }
-            );
+            disp_mov(face, rot, typ);
         }
     }
 

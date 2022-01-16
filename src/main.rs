@@ -301,13 +301,13 @@ impl Cube {
         }
     }
 
-    fn rotate(&mut self, face: Face, rot: Rotation, rot_type: RotType) {
+    fn rotate(&mut self, face: Face, rot: Rotation, typ: RotType) {
         let rev = match (face, rot) {
             (Front, Cw) | (Back, Ccw) | (Up, Cw) | (Down, Ccw) | (Left, Cw) | (Right, Ccw) => true,
             _ => false,
         };
 
-        let win_size = if let Dual = rot_type { 3 } else { 2 };
+        let win_size = if let Dual = typ { 3 } else { 2 };
         for chain in [[0_usize, 2, 8, 6], [1, 5, 7, 3]] {
             for swap in if rev {
                 Box::new(chain.windows(win_size).rev()) as Box<dyn Iterator<Item = &[usize]>>
@@ -325,7 +325,7 @@ impl Cube {
             self.rotate_sub(
                 self.ids[pos],
                 face,
-                if rev { 1 } else { -1 } * if let Dual = rot_type { 2 } else { 1 },
+                if rev { 1 } else { -1 } * if let Dual = typ { 2 } else { 1 },
             );
         }
     }
@@ -429,13 +429,25 @@ fn rand_movs(mov_nb: usize, group: usize) -> Vec<(Face, Rotation, RotType)> {
     result
 }
 
+fn disp_mov(face: Face, rot: Rotation, typ: RotType) {
+    print!(
+        "{}{} ",
+        face.to_string().bright_yellow(),
+        if let Dual = typ {
+            "2".bright_red()
+        } else {
+            rot.to_string().bright_red()
+        }
+    );
+}
+
 fn app_init(cube: &mut Cube) {
     let cmd = new_app().get_matches();
 
     println!("");
     if !cmd.is_present("new") {
         print!("{}", "MOVES: ".bright_green());
-        for (face, rot, rot_type) in if cmd.is_present("rand") {
+        for (face, rot, typ) in if cmd.is_present("rand") {
             rand_movs(
                 usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap(),
                 usize::from_str_radix(cmd.value_of("group").unwrap_or("0"), 10).unwrap(),
@@ -447,17 +459,8 @@ fn app_init(cube: &mut Cube) {
                 .map(|mov| mov_parser(mov).unwrap())
                 .collect()
         } {
-            //a factoriser
-            print!(
-                "{}{} ",
-                face.to_string().bright_yellow(),
-                if let Dual = rot_type {
-                    "2".bright_red()
-                } else {
-                    rot.to_string().bright_red()
-                }
-            );
-            cube.rotate(face, rot, rot_type);
+            disp_mov(face, rot, typ);
+            cube.rotate(face, rot, typ);
         }
         println!("\n");
     }

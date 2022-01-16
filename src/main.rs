@@ -404,6 +404,31 @@ fn new_app() -> App<'static> {
         )
 }
 
+fn pick_mov(group: usize, rng: &mut rand::rngs::ThreadRng) -> (Face, Rotation, RotType) {
+    *Cube::MOV_SET[..Cube::MOV_SET.len() - group * 4]
+        .choose(rng)
+        .unwrap()
+}
+
+fn rand_movs(mov_nb: usize, group: usize) -> Vec<(Face, Rotation, RotType)> {
+    let mut rng = rand::thread_rng();
+    let mut result: Vec<(Face, Rotation, RotType)> = Vec::with_capacity(mov_nb);
+
+    for _ in 0..mov_nb {
+        result.push({
+            let mut mv = pick_mov(group, &mut rng);
+
+            if result.len() != 0 {
+                while mv.0 == result.last().unwrap().0 {
+                    mv = pick_mov(group, &mut rng);
+                }
+            }
+            mv
+        })
+    }
+    result
+}
+
 fn app_init(cube: &mut Cube) {
     let cmd = new_app().get_matches();
 
@@ -411,26 +436,16 @@ fn app_init(cube: &mut Cube) {
     if !cmd.is_present("new") {
         print!("{}", "MOVES: ".bright_green());
         for (face, rot, rot_type) in if cmd.is_present("rand") {
-            let mut rng = rand::thread_rng();
-            Box::new(
-                (0..usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap()).map(
-                    move |_| {
-                        *Cube::MOV_SET[..Cube::MOV_SET.len()
-                            - usize::from_str_radix(cmd.value_of("group").unwrap_or("0"), 10)
-                                .unwrap()
-                                * 4]
-                            .choose(&mut rng)
-                            .unwrap()
-                    },
-                ),
-            ) as Box<dyn Iterator<Item = (Face, Rotation, RotType)>>
+            rand_movs(
+                usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap(),
+                usize::from_str_radix(cmd.value_of("group").unwrap_or("0"), 10).unwrap(),
+            )
         } else {
-            Box::new(
-                cmd.value_of("MOVES")
-                    .unwrap()
-                    .split_whitespace()
-                    .map(|mov| mov_parser(mov).unwrap()),
-            ) as Box<dyn Iterator<Item = (Face, Rotation, RotType)>>
+            cmd.value_of("MOVES")
+                .unwrap()
+                .split_whitespace()
+                .map(|mov| mov_parser(mov).unwrap())
+                .collect()
         } {
             //a factoriser
             print!(

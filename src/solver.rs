@@ -366,7 +366,7 @@ impl<'de> Solver {
     }
 
     pub fn solve(&mut self) {
-        //Self::table_search(vec![1]);
+        //Self::table_search(vec![4]);
         {
             let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
             table_1.load("mt_table_1", 12);
@@ -383,6 +383,15 @@ impl<'de> Solver {
             let key = self.key_gen_2();
             table_2.disp(key, "PHASE 2");
             table_2.exec(key, &mut self.cube);
+            println!("\n\n{}", self.cube);
+        }
+        {
+            let mut table_4: HashMap<u64, Vec<u8>> = HashMap::with_capacity(663_552);
+            table_4.load("mt_table_4", 40);
+            println!("table_4: {}", table_4.len());
+            let key = self.key_gen_4();
+            table_4.disp(key, "PHASE 4");
+            table_4.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
     }

@@ -1,23 +1,13 @@
 use super::*;
 use compressor::*;
 use crossbeam::thread;
-//use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, fs, hash::Hash, mem::size_of};
-use LoadStep::*;
-
-#[derive(Clone, Copy)]
-enum LoadStep {
-    InKey,
-    InSize,
-    InMove,
-}
+use std::{collections::HashMap, hash::Hash};
 
 trait HashMove<K> {
     fn ins_min(&mut self, key: K, comb: Vec<u8>);
     fn get_moves(&self, key: K) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
     fn save(&self, file: &str, key_sz: usize);
     fn load(&mut self, file: &str, key_sz: usize);
-    //    fn old_load(&mut self, file: &str);
     fn disp(&self, key: K, title: &str);
     fn exec(&self, key: K, cube: &mut Cube);
     fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
@@ -27,11 +17,6 @@ trait HashMove<K> {
             RotType::TYPE_SET[(mov & 0b1) as usize],
         )
     }
-    /*
-    fn old_u8_2_u8(mov: u8) -> u8 {
-        (mov & 0x3) | ((mov & 0xf0) >> 2)
-    }
-    */
 }
 
 impl<K> HashMove<K> for HashMap<K, Vec<u8>>
@@ -70,51 +55,6 @@ where
         compressor.save(file);
     }
 
-    /*
-    fn old_load(&mut self, file: &str) {
-        let mut key: Vec<u8> = Vec::with_capacity(size_of::<K>());
-        let mut size: usize = 0;
-        let mut movs: Vec<u8> = Vec::new();
-        let mut step = InKey;
-
-        for byte in fs::read(file).unwrap() {
-            match step {
-                InKey => {
-                    key.push(byte);
-                    if key.len() == size_of::<K>() {
-                        step = InSize;
-                    }
-                }
-                InSize => {
-                    size = byte as usize;
-                    step = if size > 0 {
-                        InMove
-                    } else {
-                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
-                        key.clear();
-                        InKey
-                    };
-                }
-                InMove => {
-                    movs.push(byte);
-                    size -= 1;
-                    if size == 0 {
-                        self.insert(bincode::deserialize(&key).unwrap(), movs.clone());
-                        key.clear();
-                        movs.clear();
-                        step = InKey;
-                    }
-                }
-            }
-        }
-        for (k, v) in self {
-            for m in v {
-                *m = Self::old_u8_2_u8(*m);
-            }
-        }
-    }
-    */
-
     fn load(&mut self, file: &str, key_sz: usize) {
         let mut decompressor = Decompressor::new(file);
 
@@ -148,6 +88,7 @@ pub struct Solver {
     cube: Cube,
 }
 
+#[allow(dead_code)]
 impl<'de> Solver {
     pub fn new(cube: Cube) -> Solver {
         Solver {
@@ -185,7 +126,7 @@ impl<'de> Solver {
                         .iter()
                         .enumerate()
                         .find_map(|(face_j, f)| {
-                            match col.iter().position(|c| Cube::COLOR_MAP[*f as usize] == *c) {
+                            match col.iter().position(|c| MyColor::COL_SET[*f as usize] == *c) {
                                 Some(col_i) => Some((face_j, col_i)),
                                 None => None,
                             }
@@ -211,8 +152,8 @@ impl<'de> Solver {
         for pos in 0..27 {
             id = self.cube.ids[pos];
             result = match self.cube.subs[id] {
-                Corner(dirs, cols) => (result << 3) | dirs[0] as u64,
-                Edge(dirs, cols) => {
+                Corner(dirs, _) => (result << 3) | dirs[0] as u64,
+                Edge(_, _) => {
                     (result << 1)
                         | ((Cube::FACE_MAP[Left as usize].contains(&id)
                             || Cube::FACE_MAP[Right as usize].contains(&id))
@@ -236,9 +177,9 @@ impl<'de> Solver {
                     _ => continue,
                 };
                 result = (result << 1)
-                    | (col != Cube::COLOR_MAP[dir as usize]
+                    | (col != MyColor::COL_SET[dir as usize]
                         && col
-                            != Cube::COLOR_MAP[if dir as usize % 2 == 0 {
+                            != MyColor::COL_SET[if dir as usize % 2 == 0 {
                                 dir as usize + 1
                             } else {
                                 dir as usize - 1
@@ -259,8 +200,8 @@ impl<'de> Solver {
                 _ => continue,
             };
             result = (result << 2)
-                | (((col_1 != Cube::COLOR_MAP[dir_1 as usize]) as u64) << 1)
-                | ((col_2 != Cube::COLOR_MAP[dir_2 as usize]) as u64)
+                | (((col_1 != MyColor::COL_SET[dir_1 as usize]) as u64) << 1)
+                | ((col_2 != MyColor::COL_SET[dir_2 as usize]) as u64)
         }
         result
     }

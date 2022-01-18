@@ -88,11 +88,11 @@ impl Cube {
             subs: [
                 Corner([Left, Back, Up], [Orange, Yellow, Blue]),
                 Edge([Back, Up], [Yellow, Blue]),
-                Corner([Right, Up, Back], [Red, Blue, Yellow]),
+                Corner([Right, Back, Up], [Red, Yellow, Blue]),
                 Edge([Left, Up], [Orange, Blue]),
                 Center(Up, Blue),
                 Edge([Right, Up], [Red, Blue]),
-                Corner([Left, Up, Front], [Orange, Blue, White]),
+                Corner([Left, Front, Up], [Orange, White, Blue]),
                 Edge([Front, Up], [White, Blue]),
                 Corner([Right, Front, Up], [Red, White, Blue]),
                 Edge([Left, Back], [Orange, Yellow]),
@@ -104,7 +104,7 @@ impl Cube {
                 Edge([Left, Front], [Orange, White]),
                 Center(Front, White),
                 Edge([Right, Front], [Red, White]),
-                Corner([Left, Down, Back], [Orange, Green, Yellow]),
+                Corner([Left, Back, Down], [Orange, Yellow, Green]),
                 Edge([Back, Down], [Yellow, Green]),
                 Corner([Right, Back, Down], [Red, Yellow, Green]),
                 Edge([Left, Down], [Orange, Green]),
@@ -112,7 +112,7 @@ impl Cube {
                 Edge([Right, Down], [Red, Green]),
                 Corner([Left, Front, Down], [Orange, White, Green]),
                 Edge([Front, Down], [White, Green]),
-                Corner([Right, Down, Front], [Red, Green, White]),
+                Corner([Right, Front, Down], [Red, White, Green]),
             ],
         }
     }

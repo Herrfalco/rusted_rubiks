@@ -114,7 +114,7 @@ impl<'de> Solver {
         TableInfos {
             id: 3,
             key_gen: Self::key_gen_3,
-            key_sz: 16,
+            key_sz: 20,
             set_sz: 10,
             rank: 13,
             cap: 29_400,
@@ -204,7 +204,7 @@ impl<'de> Solver {
         result
     }
 
-    //16bit key
+    //20bit key
     fn key_gen_3(&self) -> u64 {
         let mut result = 0;
 
@@ -223,6 +223,22 @@ impl<'de> Solver {
                             } else {
                                 dir as usize - 1
                             }]) as u64;
+            }
+        }
+        for face in &Cube::FACE_MAP[2..4] {
+            for pair in face
+                .iter()
+                .filter_map(|pos| {
+                    if let Corner(_, col) = &self.cube.subs[self.cube.ids[*pos]] {
+                        Some(col[1])
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<MyColor>>()
+                .chunks(2)
+            {
+                result = (result << 1) | ((pair[0] != pair[1]) as u64);
             }
         }
         result
@@ -352,7 +368,7 @@ impl<'de> Solver {
     }
 
     pub fn solve(&mut self) {
-        for step in 1..4 {
+        for step in 1..5 {
             self.solve_step(step);
         }
     }

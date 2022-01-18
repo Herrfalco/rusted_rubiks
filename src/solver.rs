@@ -358,7 +358,8 @@ impl<'de> Solver {
     }
 
     pub fn solve(&mut self) {
-        //Self::table_search(vec![4]);
+        Self::table_search(vec![3]);
+        /*
         {
             let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
             table_1.load("mt_table_1", 12);
@@ -386,5 +387,6 @@ impl<'de> Solver {
             table_4.exec(key, &mut self.cube);
             println!("\n\n{}", self.cube);
         }
+        */
     }
 }

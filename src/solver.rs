@@ -79,6 +79,7 @@ impl HashMove for HashMap<u64, Vec<u8>> {
 }
 
 struct TableInfos {
+    id: Id,
     key_gen: fn(&Solver) -> u64,
     key_sz: usize,
     set_sz: usize,
@@ -95,6 +96,7 @@ pub struct Solver {
 impl<'de> Solver {
     const TAB_INF: [TableInfos; 4] = [
         TableInfos {
+            id: 1,
             key_gen: Self::key_gen_1,
             key_sz: 12,
             set_sz: 18,
@@ -102,6 +104,7 @@ impl<'de> Solver {
             cap: 2_048,
         },
         TableInfos {
+            id: 2,
             key_gen: Self::key_gen_2,
             key_sz: 36,
             set_sz: 14,
@@ -109,6 +112,7 @@ impl<'de> Solver {
             cap: 1_082_565,
         },
         TableInfos {
+            id: 3,
             key_gen: Self::key_gen_3,
             key_sz: 16,
             set_sz: 10,
@@ -116,6 +120,7 @@ impl<'de> Solver {
             cap: 29_400,
         },
         TableInfos {
+            id: 4,
             key_gen: Self::key_gen_4,
             key_sz: 40,
             set_sz: 6,
@@ -272,28 +277,22 @@ impl<'de> Solver {
         }
     }
 
-    fn mt_search(tab: usize) {
-        let file = format!("mt_table_{}", tab);
+    fn mt_search(inf: &TableInfos, cub: Cube, sav: bool) -> Option<HashMap<u64, Vec<u8>>> {
+        let file = format!("tabs/mt_table_{}", inf.id);
 
-        println!("Table {} computation started...", tab);
-        thread::scope(|s| {
-            let tab_inf = &Self::TAB_INF[tab - 1];
-            let mut thrds = Vec::with_capacity(tab_inf.set_sz);
-            let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(tab_inf.cap);
+        println!("Table {} computation started...", inf.id);
+        let map = thread::scope(|s| {
+            let mut thrds = Vec::with_capacity(inf.set_sz);
+            let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
 
-            for (face, rot, typ) in &Cube::MOV_SET[..tab_inf.set_sz] {
+            for (face, rot, typ) in &Cube::MOV_SET[..inf.set_sz] {
                 thrds.push(s.spawn(|_| {
-                    let mut solver = Solver::new(Cube::new());
-                    let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(tab_inf.cap);
+                    let mut solver = Solver::new(cub.clone());
+                    let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
 
-                    table.ins_min((tab_inf.key_gen)(&mut solver), vec![]);
+                    table.ins_min((inf.key_gen)(&mut solver), vec![]);
                     solver.do_mov(*face, *rot, *typ);
-                    solver.rec_search(
-                        &mut table,
-                        tab_inf.key_gen,
-                        tab_inf.set_sz,
-                        tab_inf.rank - 1,
-                    );
+                    solver.rec_search(&mut table, inf.key_gen, inf.set_sz, inf.rank - 1);
                     table
                 }));
             }
@@ -303,20 +302,39 @@ impl<'de> Solver {
                     result.ins_min(key, val);
                 }
             }
-            result.save(&file, tab_inf.key_sz);
+            result
         })
         .unwrap();
-        println!("Extracted to file {}", file);
+        if sav {
+            map.save(&file, inf.key_sz);
+            println!("Extracted to file {}", file);
+            return None;
+        }
+        Some(map)
     }
 
     pub fn table_search(table_ids: Vec<usize>) {
+        let mut inf;
+
         for id in table_ids {
+            inf = &Solver::TAB_INF[id - 1];
             match id {
-                1 => Self::mt_search(1),
-                2 => Self::mt_search(2),
-                3 => Self::mt_search(3),
-                4 => Self::mt_search(4),
-                _ => panic!("unknown table"),
+                4 => {
+                    let mut cub = Cube::new();
+                    cub.rotate(Left, Cw, Dual);
+
+                    let mut fst = Self::mt_search(inf, cub, false).unwrap();
+                    println!("First part extracted...");
+
+                    let sec = Self::mt_search(inf, Cube::new(), false).unwrap();
+                    println!("Second part extracted...");
+
+                    for (key, val) in sec {
+                        fst.ins_min(key, val);
+                    }
+                    None
+                }
+                _ => Self::mt_search(inf, Cube::new(), true),
             };
         }
     }
@@ -325,7 +343,7 @@ impl<'de> Solver {
         let tab_inf = &Self::TAB_INF[step - 1];
         let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(tab_inf.cap);
 
-        table.load(&format!("mt_table_{}", step), tab_inf.key_sz);
+        table.load(&format!("tabs/mt_table_{}", step), tab_inf.key_sz);
         println!("table {} size: {}", step, table.len());
         let key = (tab_inf.key_gen)(&self);
         table.disp(key, &format!("PHASE {}", step));
@@ -334,40 +352,8 @@ impl<'de> Solver {
     }
 
     pub fn solve(&mut self) {
-<<<<<<< HEAD
-        Self::table_search(vec![3]);
-        /*
-        {
-            let mut table_1: HashMap<u16, Vec<u8>> = HashMap::with_capacity(2_048);
-            table_1.load("mt_table_1", 12);
-            println!("table_1: {}", table_1.len());
-            let key = self.key_gen_1();
-            table_1.disp(key, "PHASE 1");
-            table_1.exec(key, &mut self.cube);
-            println!("\n\n{}", self.cube);
-        }
-        {
-            let mut table_2: HashMap<u64, Vec<u8>> = HashMap::with_capacity(1_082_565);
-            table_2.load("mt_table_2", 36);
-            println!("table_2: {}", table_2.len());
-            let key = self.key_gen_2();
-            table_2.disp(key, "PHASE 2");
-            table_2.exec(key, &mut self.cube);
-            println!("\n\n{}", self.cube);
-=======
-        for step in 1..3 {
+        for step in 1..4 {
             self.solve_step(step);
->>>>>>> 94e4e9314994606270e86d9b02c438e5efad222a
         }
-        {
-            let mut table_4: HashMap<u64, Vec<u8>> = HashMap::with_capacity(663_552);
-            table_4.load("mt_table_4", 40);
-            println!("table_4: {}", table_4.len());
-            let key = self.key_gen_4();
-            table_4.disp(key, "PHASE 4");
-            table_4.exec(key, &mut self.cube);
-            println!("\n\n{}", self.cube);
-        }
-        */
     }
 }

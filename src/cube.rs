@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Clone)]
 pub enum SubCube {
     Core,
     Center(Face, MyColor),
@@ -7,6 +8,7 @@ pub enum SubCube {
     Corner([Face; 3], [MyColor; 3]),
 }
 
+#[derive(Clone)]
 pub struct Cube {
     pub ids: Vec<Id>,
     pub subs: [SubCube; 27],

@@ -53,7 +53,7 @@ fn new_app() -> App<'static> {
             Arg::new("MOVES")
                 .validator(input_checker)
                 .exclusive(true)
-                .required_unless_present_any(&["rand", "new"])
+                .required_unless_present_any(&["rand", "new", "tab"])
                 .help(
                     "Face rotations splited by whitespaces.\n\
                     U, D, F, B, L, R for Up, Down, Front, Back, Left and Right\n\
@@ -85,6 +85,34 @@ fn new_app() -> App<'static> {
                 .short('n')
                 .conflicts_with("rand")
                 .help("Start with an unaltered cube"),
+        )
+        .arg(
+            Arg::new("tab")
+                .long("tab")
+                .short('t')
+                .exclusive(true)
+                .require_equals(true)
+                .validator(|v| {
+                    let mut tabs: Vec<&str> = v.split(',').collect();
+                    let len = tabs.len();
+
+                    tabs.sort();
+                    tabs.dedup();
+                    if len < 1 || len > 4 {
+                        return Err("too many tables");
+                    } else if len != tabs.len() {
+                        return Err("table duplicate");
+                    } else {
+                        for tab in tabs {
+                            if ["1", "2", "3", "4"].contains(&tab) == false {
+                                return Err("invalid table number");
+                            }
+                        }
+                    }
+                    Ok(())
+                })
+                .value_name("IDS")
+                .help("Compute tables (<IDS> from 1 to 4 separated by commas)"),
         )
 }
 
@@ -125,37 +153,44 @@ fn disp_mov(face: Face, rot: Rotation, typ: RotType) {
     );
 }
 
-fn app_init(cube: &mut Cube) {
+fn main() {
     let cmd = new_app().get_matches();
 
-    println!("");
-    if !cmd.is_present("new") {
-        print!("{}", "MOVES: ".bright_green());
-        for (face, rot, typ) in if cmd.is_present("rand") {
-            rand_movs(
-                usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap(),
-                usize::from_str_radix(cmd.value_of("group").unwrap_or("0"), 10).unwrap(),
-            )
-        } else {
-            cmd.value_of("MOVES")
-                .unwrap()
-                .split_whitespace()
-                .map(|mov| mov_parser(mov).unwrap())
-                .collect()
-        } {
-            disp_mov(face, rot, typ);
-            cube.rotate(face, rot, typ);
+    if cmd.is_present("tab") {
+        let tabs = cmd
+            .value_of("tab")
+            .unwrap()
+            .split(",")
+            .collect::<Vec<&str>>();
+        Solver::table_search(
+            tabs.iter()
+                .map(|t| usize::from_str_radix(t, 10).unwrap())
+                .collect(),
+        );
+    } else {
+        let mut cube = Cube::new();
+
+        println!("");
+        if !cmd.is_present("new") {
+            print!("{}", "MOVES: ".bright_green());
+            for (face, rot, typ) in if cmd.is_present("rand") {
+                rand_movs(
+                    usize::from_str_radix(cmd.value_of("rand").unwrap(), 10).unwrap(),
+                    usize::from_str_radix(cmd.value_of("group").unwrap_or("0"), 10).unwrap(),
+                )
+            } else {
+                cmd.value_of("MOVES")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|mov| mov_parser(mov).unwrap())
+                    .collect()
+            } {
+                disp_mov(face, rot, typ);
+                cube.rotate(face, rot, typ);
+            }
+            println!("\n");
         }
-        println!("\n");
+        println!("{}", cube);
+        Solver::new(cube).solve();
     }
-    println!("{}", cube);
-}
-
-fn main() {
-    let mut cube = Cube::new();
-
-    app_init(&mut cube);
-    let mut solver = Solver::new(cube);
-
-    solver.solve();
 }

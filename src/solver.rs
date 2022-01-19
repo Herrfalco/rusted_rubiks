@@ -335,7 +335,7 @@ impl<'de> Solver {
         for id in table_ids {
             inf = &Solver::TAB_INF[id - 1];
             match id {
-                4 => {
+                3 => {
                     let mut cub = Cube::new();
                     cub.rotate(Left, Cw, Dual);
 

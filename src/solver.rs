@@ -293,9 +293,7 @@ impl<'de> Solver {
         }
     }
 
-    fn mt_search(inf: &TableInfos, cub: Cube, sav: bool) -> Option<HashMap<u64, Vec<u8>>> {
-        let file = format!("tabs/mt_table_{}", inf.id);
-
+    fn mt_search(inf: &TableInfos, cub: Cube) -> HashMap<u64, Vec<u8>> {
         println!("Table {} computation started...", inf.id);
         let map = thread::scope(|s| {
             let mut thrds = Vec::with_capacity(inf.set_sz);
@@ -321,37 +319,40 @@ impl<'de> Solver {
             result
         })
         .unwrap();
-        if sav {
-            map.save(&file, inf.key_sz);
-            println!("Extracted to file {}", file);
-            return None;
-        }
-        Some(map)
+        map
     }
 
     pub fn table_search(table_ids: Vec<usize>) {
         let mut inf;
+        let mut file;
 
         for id in table_ids {
             inf = &Solver::TAB_INF[id - 1];
+            file = format!("tabs/mt_table_{}", inf.id);
             match id {
                 3 => {
                     let mut cub = Cube::new();
                     cub.rotate(Left, Cw, Dual);
 
-                    let mut fst = Self::mt_search(inf, cub, false).unwrap();
+                    let mut fst = Self::mt_search(inf, cub);
+                    //delete
+                    fst.save("tmp1", inf.key_sz);
                     println!("First part extracted...");
 
-                    let sec = Self::mt_search(inf, Cube::new(), false).unwrap();
+                    let sec = Self::mt_search(inf, Cube::new());
+                    //delete
+                    sec.save("tmp2", inf.key_sz);
                     println!("Second part extracted...");
 
                     for (key, val) in sec {
                         fst.ins_min(key, val);
                     }
-                    None
+                    fst
                 }
-                _ => Self::mt_search(inf, Cube::new(), true),
-            };
+                _ => Self::mt_search(inf, Cube::new()),
+            }
+            .save(&file, inf.key_sz);
+            println!("Extracted to file {}", file);
         }
     }
 

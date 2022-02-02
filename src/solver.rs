@@ -3,6 +3,8 @@ use compressor::*;
 use crossbeam::thread;
 use std::collections::HashMap;
 
+//split table generator and solver
+
 trait HashMove {
     fn ins_min(&mut self, key: u64, comb: Vec<u8>);
     fn get_moves(&self, key: u64) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
@@ -114,7 +116,7 @@ impl<'de> Solver {
         TableInfos {
             id: 3,
             key_gen: Self::key_gen_3,
-            key_sz: 20,
+            key_sz: 28,
             set_sz: 10,
             rank: 13,
             cap: 29_400,
@@ -134,6 +136,24 @@ impl<'de> Solver {
             mov_stack: Vec::with_capacity(128),
             cube,
         }
+    }
+
+    fn g3_seeds() -> [Vec<(Face, Rotation, RotType)>; 8] {
+        [
+            vec![],
+            vec![(Up, Cw, Dual), (Left, Cw, Dual)],
+            vec![(Down, Cw, Dual), (Front, Cw, Dual)],
+            vec![(Front, Cw, Dual), (Up, Cw, Dual)],
+            vec![(Up, Cw, Dual), (Left, Cw, Dual), (Front, Cw, Dual)],
+            vec![(Right, Cw, Dual), (Down, Cw, Dual), (Right, Cw, Dual)],
+            vec![(Right, Cw, Dual), (Back, Cw, Dual), (Up, Cw, Dual)],
+            vec![
+                (Up, Cw, Dual),
+                (Front, Cw, Dual),
+                (Right, Cw, Dual),
+                (Down, Cw, Dual),
+            ],
+        ]
     }
 
     fn do_mov(&mut self, face: Face, rot: Rotation, typ: RotType) {
@@ -204,7 +224,7 @@ impl<'de> Solver {
         result
     }
 
-    //20bit key
+    //28bit key
     fn key_gen_3(&self) -> u64 {
         let mut result = 0;
 
@@ -225,20 +245,21 @@ impl<'de> Solver {
                             }]) as u64;
             }
         }
-        for face in &Cube::FACE_MAP[2..4] {
-            for pair in face
-                .iter()
-                .filter_map(|pos| {
-                    if let Corner(_, col) = &self.cube.subs[self.cube.ids[*pos]] {
-                        Some(col[1])
-                    } else {
-                        None
+        for (pair_idx, face_pair) in Cube::FACE_MAP.chunks(2).enumerate() {
+            for (pos_1, pos_2) in face_pair[0].iter().zip(face_pair[1].iter()) {
+                if let Corner(dirs_1, cols_1) = self.cube.subs[self.cube.ids[*pos_1]] {
+                    if let Corner(dirs_2, cols_2) = self.cube.subs[self.cube.ids[*pos_2]] {
+                        result = (result << 1)
+                            | (cols_1[dirs_1
+                                .iter()
+                                .position(|x| *x == Face::FACE_SET[pair_idx * 2])
+                                .unwrap()]
+                                == cols_2[dirs_2
+                                    .iter()
+                                    .position(|x| *x == Face::FACE_SET[pair_idx * 2 + 1])
+                                    .unwrap()]) as u64;
                     }
-                })
-                .collect::<Vec<MyColor>>()
-                .chunks(2)
-            {
-                result = (result << 1) | ((pair[0] != pair[1]) as u64);
+                }
             }
         }
         result
@@ -294,7 +315,7 @@ impl<'de> Solver {
     }
 
     fn mt_search(inf: &TableInfos, cub: Cube) -> HashMap<u64, Vec<u8>> {
-        println!("Table {} computation started...", inf.id);
+        println!("Computation unit started...");
         let map = thread::scope(|s| {
             let mut thrds = Vec::with_capacity(inf.set_sz);
             let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
@@ -319,6 +340,7 @@ impl<'de> Solver {
             result
         })
         .unwrap();
+        println!("Computation unit ended...");
         map
     }
 
@@ -329,25 +351,32 @@ impl<'de> Solver {
         for id in table_ids {
             inf = &Solver::TAB_INF[id - 1];
             file = format!("tabs/mt_table_{}", inf.id);
+            println!("Table {} extraction:", inf.id);
             match id {
                 3 => {
-                    let mut cub = Cube::new();
-                    cub.rotate(Left, Cw, Dual);
+                    let map = thread::scope(|s| {
+                        let seeds = Solver::g3_seeds();
+                        let mut thrds = Vec::with_capacity(seeds.len());
+                        let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
 
-                    let mut fst = Self::mt_search(inf, cub);
-                    //delete
-                    fst.save("tmp1", inf.key_sz);
-                    println!("First part extracted...");
+                        for seed in seeds {
+                            let mut cub = Cube::new();
 
-                    let sec = Self::mt_search(inf, Cube::new());
-                    //delete
-                    sec.save("tmp2", inf.key_sz);
-                    println!("Second part extracted...");
+                            for (mov, rot, typ) in seed {
+                                cub.rotate(mov, rot, typ);
+                            }
+                            thrds.push(s.spawn(|_| Self::mt_search(inf, cub)));
+                        }
 
-                    for (key, val) in sec {
-                        fst.ins_min(key, val);
-                    }
-                    fst
+                        for thrd in thrds {
+                            for (key, val) in thrd.join().unwrap() {
+                                result.ins_min(key, val);
+                            }
+                        }
+                        result
+                    })
+                    .unwrap();
+                    map
                 }
                 _ => Self::mt_search(inf, Cube::new()),
             }

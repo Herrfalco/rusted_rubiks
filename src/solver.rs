@@ -6,14 +6,12 @@ use std::collections::HashMap;
 //split table generator and solver
 
 trait HashMove {
-    fn ins_min(&mut self, key: u64, comb: Vec<u8>);
-    fn get_moves(&self, key: u64) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_>;
+    fn ins_min(&mut self, key: u64, movs: Vec<u8>);
     fn save(&self, file: &str, key_sz: usize);
     fn load(&mut self, file: &str, key_sz: usize);
-    fn disp(&self, key: u64, title: &str);
-    fn exec(&self, key: u64, cube: &mut Cube);
-    fn u8_2_mov(mov: u8) -> (Face, Rotation, RotType) {
-        (
+    fn exec(&self, key: u64, cube: &mut Cube, phase: Option<usize>);
+    fn u8_2_mov(mov: u8) -> Move {
+        Move(
             Face::FACE_SET[(mov >> 2) as usize],
             Rotation::ROT_SET[((mov >> 1) & 0b1) as usize],
             RotType::TYPE_SET[(mov & 0b1) as usize],
@@ -22,21 +20,17 @@ trait HashMove {
 }
 
 impl HashMove for HashMap<u64, Vec<u8>> {
-    fn ins_min(&mut self, key: u64, comb: Vec<u8>) {
+    fn ins_min(&mut self, key: u64, movs: Vec<u8>) {
         match self.get_mut(&key) {
             Some(val) => {
-                if val.len() > comb.len() {
-                    *val = comb;
+                if val.len() > movs.len() {
+                    *val = movs;
                 }
             }
             None => {
-                self.insert(key, comb);
+                self.insert(key, movs);
             }
         }
-    }
-
-    fn get_moves(&self, key: u64) -> Box<dyn Iterator<Item = (Face, Rotation, RotType)> + '_> {
-        Box::new(self[&key].iter().map(|mv| Self::u8_2_mov(*mv)))
     }
 
     fn save(&self, file: &str, key_sz: usize) {
@@ -65,17 +59,15 @@ impl HashMove for HashMap<u64, Vec<u8>> {
         }
     }
 
-    fn disp(&self, key: u64, title: &str) {
-        print!("{}", format!("{}: ", title).bright_green());
+    fn exec(&self, key: u64, cube: &mut Cube, phase: Option<usize>) {
+        let mut disp_res = String::new();
 
-        for (face, rot, typ) in self.get_moves(key) {
-            disp_mov(face, rot, typ);
+        for mv in self[&key].iter().map(|mv| Self::u8_2_mov(*mv)) {
+            std::fmt::write(&mut disp_res, format_args!("{} ", mv)).unwrap();
+            cube.rotate(mv, true);
         }
-    }
-
-    fn exec(&self, key: u64, cube: &mut Cube) {
-        for (face, rot, typ) in self.get_moves(key) {
-            cube.rotate(face, rot, typ);
+        if let Some(nb) = phase {
+            print!("{}{}", format!("PHASE {}: ", nb).bright_green(), disp_res);
         }
     }
 }
@@ -90,7 +82,7 @@ struct TableInfos {
 }
 
 pub struct Solver {
-    mov_stack: Vec<(Face, Rotation, RotType)>,
+    mov_stack: Vec<Move>,
     cube: Cube,
 }
 
@@ -138,35 +130,46 @@ impl<'de> Solver {
         }
     }
 
-    fn g3_seeds() -> [Vec<(Face, Rotation, RotType)>; 8] {
+    fn g3_seeds() -> [Vec<Move>; 8] {
         [
             vec![],
-            vec![(Up, Cw, Dual), (Left, Cw, Dual)],
-            vec![(Down, Cw, Dual), (Front, Cw, Dual)],
-            vec![(Front, Cw, Dual), (Up, Cw, Dual)],
-            vec![(Up, Cw, Dual), (Left, Cw, Dual), (Front, Cw, Dual)],
-            vec![(Right, Cw, Dual), (Down, Cw, Dual), (Right, Cw, Dual)],
-            vec![(Right, Cw, Dual), (Back, Cw, Dual), (Up, Cw, Dual)],
+            vec![Move(Up, Cw, Dual), Move(Left, Cw, Dual)],
+            vec![Move(Down, Cw, Dual), Move(Front, Cw, Dual)],
+            vec![Move(Front, Cw, Dual), Move(Up, Cw, Dual)],
             vec![
-                (Up, Cw, Dual),
-                (Front, Cw, Dual),
-                (Right, Cw, Dual),
-                (Down, Cw, Dual),
+                Move(Up, Cw, Dual),
+                Move(Left, Cw, Dual),
+                Move(Front, Cw, Dual),
+            ],
+            vec![
+                Move(Right, Cw, Dual),
+                Move(Down, Cw, Dual),
+                Move(Right, Cw, Dual),
+            ],
+            vec![
+                Move(Right, Cw, Dual),
+                Move(Back, Cw, Dual),
+                Move(Up, Cw, Dual),
+            ],
+            vec![
+                Move(Up, Cw, Dual),
+                Move(Front, Cw, Dual),
+                Move(Right, Cw, Dual),
+                Move(Down, Cw, Dual),
             ],
         ]
     }
 
-    fn do_mov(&mut self, face: Face, rot: Rotation, typ: RotType) {
-        self.mov_stack.push((face, rot, typ));
-        self.cube.rotate(face, rot, typ);
+    fn do_mov(&mut self, mv: Move) {
+        self.mov_stack.push(mv);
+        self.cube.rotate(mv, false);
     }
 
-    fn undo_mov(&mut self) -> (Face, Rotation, RotType) {
-        let (face, rot, typ) = self.mov_stack.pop().unwrap();
+    fn undo_mov(&mut self) {
+        let Move(face, rot, typ) = self.mov_stack.pop().unwrap();
 
         self.cube
-            .rotate(face, if let Cw = rot { Ccw } else { Cw }, typ);
-        (face, rot, typ)
+            .rotate(Move(face, if let Cw = rot { Ccw } else { Cw }, typ), false);
     }
 
     //12bit key
@@ -232,7 +235,6 @@ impl<'de> Solver {
             for pos in face {
                 let (dir, col) = match self.cube.subs[self.cube.ids[*pos]] {
                     Edge(dirs, cols) => (dirs[1], cols[1]),
-                    Corner(dirs, cols) => (dirs[1], cols[1]),
                     _ => continue,
                 };
                 result = (result << 1)
@@ -282,15 +284,13 @@ impl<'de> Solver {
         result
     }
 
-    fn mov_2_u8(face: Face, rot: Rotation, typ: RotType) -> u8 {
-        ((face as u8) << 2) | ((rot as u8) << 1) | (typ as u8)
-    }
-
-    fn comb_2_rev_u8(comb: &Vec<(Face, Rotation, RotType)>) -> Vec<u8> {
-        comb.iter()
+    fn movs_2_rev_u8(movs: &Vec<Move>) -> Vec<u8> {
+        movs.iter()
             .rev()
-            .map(|(face, rot, typ)| {
-                Self::mov_2_u8(*face, if let Cw = *rot { Ccw } else { Cw }, *typ)
+            .map(|Move(face, rot, typ)| {
+                ((*face as u8) << 2)
+                    | (((if *rot == Cw { Ccw } else { Cw }) as u8) << 1)
+                    | (*typ as u8)
             })
             .collect()
     }
@@ -302,11 +302,11 @@ impl<'de> Solver {
         set_sz: usize,
         rank: usize,
     ) {
-        sol.ins_min(key_gen(self), Self::comb_2_rev_u8(&self.mov_stack));
+        sol.ins_min(key_gen(self), Self::movs_2_rev_u8(&self.mov_stack));
         if rank > 0 {
-            for (face, rot, typ) in Cube::MOV_SET[..set_sz].iter() {
-                if self.mov_stack.last().unwrap().0 != *face {
-                    self.do_mov(*face, *rot, *typ);
+            for mv in Cube::MOV_SET[..set_sz].iter() {
+                if self.mov_stack.last().unwrap().0 != mv.0 {
+                    self.do_mov(*mv);
                     self.rec_search(sol, key_gen, set_sz, rank - 1);
                     self.undo_mov();
                 }
@@ -320,13 +320,13 @@ impl<'de> Solver {
             let mut thrds = Vec::with_capacity(inf.set_sz);
             let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
 
-            for (face, rot, typ) in &Cube::MOV_SET[..inf.set_sz] {
+            for mv in &Cube::MOV_SET[..inf.set_sz] {
                 thrds.push(s.spawn(|_| {
                     let mut solver = Solver::new(cub.clone());
                     let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
 
                     table.ins_min((inf.key_gen)(&mut solver), vec![]);
-                    solver.do_mov(*face, *rot, *typ);
+                    solver.do_mov(*mv);
                     solver.rec_search(&mut table, inf.key_gen, inf.set_sz, inf.rank - 1);
                     table
                 }));
@@ -362,8 +362,8 @@ impl<'de> Solver {
                         for seed in seeds {
                             let mut cub = Cube::new();
 
-                            for (mov, rot, typ) in seed {
-                                cub.rotate(mov, rot, typ);
+                            for mv in seed {
+                                cub.rotate(mv, false);
                             }
                             thrds.push(s.spawn(|_| Self::mt_search(inf, cub)));
                         }
@@ -389,11 +389,24 @@ impl<'de> Solver {
         let tab_inf = &Self::TAB_INF[step - 1];
         let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(tab_inf.cap);
 
+        /*
+        println!(
+            "before: {:0ks$b}",
+            (tab_inf.key_gen)(&self),
+            ks = tab_inf.key_sz
+        );
+        */
         table.load(&format!("tabs/mt_table_{}", step), tab_inf.key_sz);
         println!("table {} size: {}", step, table.len());
         let key = (tab_inf.key_gen)(&self);
-        table.disp(key, &format!("PHASE {}", step));
-        table.exec(key, &mut self.cube);
+        table.exec(key, &mut self.cube, Some(step));
+        /*
+        println!(
+            "before: {:0ks$b}",
+            (tab_inf.key_gen)(&self),
+            ks = tab_inf.key_sz
+        );
+        */
         println!("\n\n{}", self.cube);
     }
 

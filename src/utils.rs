@@ -88,3 +88,23 @@ pub enum RotType {
 impl RotType {
     pub const TYPE_SET: [RotType; 2] = [Single, Dual];
 }
+
+#[derive(Clone, Copy)]
+pub struct Move(pub Face, pub Rotation, pub RotType);
+
+impl std::fmt::Display for Move {
+    fn fmt(&self, fm: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let Move(face, rot, typ) = self;
+
+        write!(
+            fm,
+            "{}{}",
+            face.to_string().bright_yellow(),
+            if *typ == Dual {
+                "2".bright_red()
+            } else {
+                rot.to_string().bright_red()
+            }
+        )
+    }
+}

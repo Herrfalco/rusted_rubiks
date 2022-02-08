@@ -12,6 +12,7 @@ pub enum SubCube {
 pub struct Cube {
     pub ids: Vec<Id>,
     pub subs: [SubCube; 27],
+    pub movs: Vec<Move>,
 }
 
 impl std::fmt::Display for Cube {
@@ -41,7 +42,7 @@ impl std::fmt::Display for Cube {
         for line in Self::FACE_MAP[Down as usize].chunks(3).rev() {
             result.push_str(&format!("         {}\n", self.row_2_str(line, Down, false),));
         }
-        result.fmt(fm)
+        write!(fm, "{}", result)
     }
 }
 
@@ -61,25 +62,25 @@ impl Cube {
         [2, 5, 8, 11, 14, 17, 20, 23, 26],
     ];
 
-    pub const MOV_SET: [(Face, Rotation, RotType); 18] = [
-        (Left, Ccw, Dual),
-        (Right, Ccw, Dual),
-        (Front, Ccw, Dual),
-        (Back, Ccw, Dual),
-        (Up, Ccw, Dual),
-        (Down, Ccw, Dual),
-        (Left, Ccw, Single),
-        (Right, Ccw, Single),
-        (Left, Cw, Single),
-        (Right, Cw, Single),
-        (Front, Ccw, Single),
-        (Back, Ccw, Single),
-        (Front, Cw, Single),
-        (Back, Cw, Single),
-        (Up, Ccw, Single),
-        (Down, Ccw, Single),
-        (Up, Cw, Single),
-        (Down, Cw, Single),
+    pub const MOV_SET: [Move; 18] = [
+        Move(Left, Ccw, Dual),
+        Move(Right, Ccw, Dual),
+        Move(Front, Ccw, Dual),
+        Move(Back, Ccw, Dual),
+        Move(Up, Ccw, Dual),
+        Move(Down, Ccw, Dual),
+        Move(Left, Ccw, Single),
+        Move(Right, Ccw, Single),
+        Move(Left, Cw, Single),
+        Move(Right, Cw, Single),
+        Move(Front, Ccw, Single),
+        Move(Back, Ccw, Single),
+        Move(Front, Cw, Single),
+        Move(Back, Cw, Single),
+        Move(Up, Ccw, Single),
+        Move(Down, Ccw, Single),
+        Move(Up, Cw, Single),
+        Move(Down, Cw, Single),
     ];
 
     pub fn new() -> Self {
@@ -114,6 +115,7 @@ impl Cube {
                 Edge([Front, Down], [White, Green]),
                 Corner([Right, Front, Down], [Red, White, Green]),
             ],
+            movs: Vec::new(),
         }
     }
 
@@ -168,13 +170,14 @@ impl Cube {
         }
     }
 
-    pub fn rotate(&mut self, face: Face, rot: Rotation, typ: RotType) {
+    pub fn rotate(&mut self, mov: Move, mem: bool) {
+        let Move(face, rot, typ) = mov;
         let rev = match (face, rot) {
             (Front, Cw) | (Back, Ccw) | (Up, Cw) | (Down, Ccw) | (Left, Cw) | (Right, Ccw) => true,
             _ => false,
         };
-
         let win_size = if let Dual = typ { 3 } else { 2 };
+
         for chain in [[0_usize, 2, 8, 6], [1, 5, 7, 3]] {
             for swap in if rev {
                 Box::new(chain.windows(win_size).rev()) as Box<dyn Iterator<Item = &[usize]>>
@@ -187,7 +190,6 @@ impl Cube {
                 );
             }
         }
-
         for pos in Self::FACE_MAP[face as usize] {
             self.rotate_sub(
                 self.ids[pos],
@@ -195,5 +197,74 @@ impl Cube {
                 if rev { 1 } else { -1 } * if let Dual = typ { 2 } else { 1 },
             );
         }
+        if mem {
+            self.movs.push(mov);
+        }
+    }
+
+    pub fn mov_parser(mov: &str) -> Result<Move, String> {
+        match mov {
+            "U" => Ok(Move(Up, Cw, Single)),
+            "U2" => Ok(Move(Up, Cw, Dual)),
+            "U'" => Ok(Move(Up, Ccw, Single)),
+            "D" => Ok(Move(Down, Cw, Single)),
+            "D2" => Ok(Move(Down, Cw, Dual)),
+            "D'" => Ok(Move(Down, Ccw, Single)),
+            "F" => Ok(Move(Front, Cw, Single)),
+            "F2" => Ok(Move(Front, Cw, Dual)),
+            "F'" => Ok(Move(Front, Ccw, Single)),
+            "B" => Ok(Move(Back, Cw, Single)),
+            "B2" => Ok(Move(Back, Cw, Dual)),
+            "B'" => Ok(Move(Back, Ccw, Single)),
+            "L" => Ok(Move(Left, Cw, Single)),
+            "L2" => Ok(Move(Left, Cw, Dual)),
+            "L'" => Ok(Move(Left, Ccw, Single)),
+            "R" => Ok(Move(Right, Cw, Single)),
+            "R2" => Ok(Move(Right, Cw, Dual)),
+            "R'" => Ok(Move(Right, Ccw, Single)),
+            _ => Err(format!("Face \"{}\" is not recognized", mov)),
+        }
+    }
+
+    pub fn from_str(s: &str, disp: bool) -> Self {
+        let mut result = Cube::new();
+        let mut disp_res = String::new();
+
+        for mv in s.split_whitespace().map(|m| Self::mov_parser(m).unwrap()) {
+            std::fmt::write(&mut disp_res, format_args!("{} ", mv)).unwrap();
+            result.rotate(mv, true);
+        }
+        if disp {
+            print!("{}{}", "MOVES: ".bright_green(), disp_res);
+        }
+        result
+    }
+
+    pub fn from_rand(mov_nb: usize, group: usize, disp: bool) -> Self {
+        let mut result = Cube::new();
+        let mut lst_mv: Option<Move> = None;
+        let mut rng = rand::thread_rng();
+        let mut disp_res = String::new();
+
+        for _ in 0..mov_nb {
+            loop {
+                let mv = *Cube::MOV_SET[..Cube::MOV_SET.len() - group * 4]
+                    .choose(&mut rng)
+                    .unwrap();
+                if let Some(Move(face, ..)) = lst_mv {
+                    if face == mv.0 {
+                        continue;
+                    }
+                }
+                lst_mv = Some(mv);
+                std::fmt::write(&mut disp_res, format_args!("{} ", mv)).unwrap();
+                result.rotate(mv, true);
+                break;
+            }
+        }
+        if disp {
+            print!("{}{}", "MOVES: ".bright_green(), disp_res);
+        }
+        result
     }
 }

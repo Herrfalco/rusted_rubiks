@@ -235,7 +235,7 @@ impl Cube {
             result.rotate(mv, true);
         }
         if disp {
-            print!("{}{}", "MOVES: ".bright_green(), disp_res);
+            println!("{}{}", "MOVES: ".bright_green(), disp_res);
         }
         result
     }
@@ -263,7 +263,7 @@ impl Cube {
             }
         }
         if disp {
-            print!("{}{}", "MOVES: ".bright_green(), disp_res);
+            println!("{}{}", "MOVES: ".bright_green(), disp_res);
         }
         result
     }

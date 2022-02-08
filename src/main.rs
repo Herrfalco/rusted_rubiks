@@ -1,13 +1,16 @@
 mod compressor;
 mod cube;
-mod solver;
+mod extractor;
+mod table;
 mod utils;
 
 use clap::{App, Arg};
 use colored::*;
 use cube::*;
+use extractor::*;
 use rand::seq::SliceRandom;
-use solver::*;
+use std::collections::HashMap;
+use table::*;
 use utils::*;
 use Face::*;
 use MyColor::*;
@@ -92,6 +95,21 @@ fn new_app() -> App<'static> {
         )
 }
 
+pub fn solve(cube: &mut Cube) {
+    for step in 1..5 {
+        let tab_inf = &Extractor::TAB_INF[step - 1];
+        let mut table: HashMap<u64, Vec<u8>> = HashMap::with_capacity(tab_inf.cap);
+
+        table.load(&format!("tabs/mt_table_{}", step), tab_inf.key_sz);
+        print!(
+            "{}{}",
+            format!("PHASE {}: ", step).bright_green(),
+            table.exec((tab_inf.key_gen)(&cube), cube)
+        );
+        println!("\n\n{}", cube);
+    }
+}
+
 fn main() {
     let cmd = new_app().get_matches();
 
@@ -101,13 +119,13 @@ fn main() {
             .unwrap()
             .split(",")
             .collect::<Vec<&str>>();
-        Solver::table_search(
+        Extractor::table_search(
             tabs.iter()
                 .map(|t| usize::from_str_radix(t, 10).unwrap())
                 .collect(),
         );
     } else {
-        let cube = if cmd.is_present("new") {
+        let mut cube = if cmd.is_present("new") {
             Cube::new()
         } else {
             if cmd.is_present("rand") {
@@ -121,6 +139,6 @@ fn main() {
             }
         };
         println!("\n{}", cube);
-        Solver::new(cube).solve();
+        solve(&mut cube);
     }
 }

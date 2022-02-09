@@ -43,41 +43,13 @@ impl Extractor {
         },
     ];
 
+    const TETRAD: [Id; 4] = [0, 8, 20, 24];
+
     pub fn new(cube: Cube) -> Self {
         Self {
             cube,
             mov_stack: Vec::with_capacity(128),
         }
-    }
-
-    fn g3_seeds() -> [Vec<Move>; 8] {
-        [
-            vec![],
-            vec![Move(Up, Cw, Dual), Move(Left, Cw, Dual)],
-            vec![Move(Down, Cw, Dual), Move(Front, Cw, Dual)],
-            vec![Move(Front, Cw, Dual), Move(Up, Cw, Dual)],
-            vec![
-                Move(Up, Cw, Dual),
-                Move(Left, Cw, Dual),
-                Move(Front, Cw, Dual),
-            ],
-            vec![
-                Move(Right, Cw, Dual),
-                Move(Down, Cw, Dual),
-                Move(Right, Cw, Dual),
-            ],
-            vec![
-                Move(Right, Cw, Dual),
-                Move(Back, Cw, Dual),
-                Move(Up, Cw, Dual),
-            ],
-            vec![
-                Move(Up, Cw, Dual),
-                Move(Front, Cw, Dual),
-                Move(Right, Cw, Dual),
-                Move(Down, Cw, Dual),
-            ],
-        ]
     }
 
     fn do_mov(&mut self, mv: Move) {
@@ -151,40 +123,26 @@ impl Extractor {
 
         for face in &Cube::FACE_MAP[4..] {
             for pos in face {
-                let (dir, col) = match cub.subs[cub.ids[*pos]] {
-                    Edge(dirs, cols) => (dirs[1], cols[1]),
-                    Corner(dirs, cols) => (dirs[1], cols[1]),
+                result = match cub.subs[cub.ids[*pos]] {
+                    Edge(dirs, cols) => {
+                        (result << 1)
+                            | (cols[1] != MyColor::COL_SET[dirs[1] as usize]
+                                && cols[1]
+                                    != MyColor::COL_SET[if dirs[1] as usize % 2 == 0 {
+                                        dirs[1] as usize + 1
+                                    } else {
+                                        dirs[1] as usize - 1
+                                    }]) as u64
+                    }
+                    Corner(..) => {
+                        (result << 1)
+                            | (Self::TETRAD.contains(pos) ^ Self::TETRAD.contains(&cub.ids[*pos]))
+                                as u64
+                    }
                     _ => continue,
                 };
-                result = (result << 1)
-                    | (col != MyColor::COL_SET[dir as usize]
-                        && col
-                            != MyColor::COL_SET[if dir as usize % 2 == 0 {
-                                dir as usize + 1
-                            } else {
-                                dir as usize - 1
-                            }]) as u64;
             }
         }
-        /*
-        for (pair_idx, face_pair) in Cube::FACE_MAP.chunks(2).enumerate() {
-            for (pos_1, pos_2) in face_pair[0].iter().zip(face_pair[1].iter()) {
-                if let Corner(dirs_1, cols_1) = cub.subs[cub.ids[*pos_1]] {
-                    if let Corner(dirs_2, cols_2) = cub.subs[cub.ids[*pos_2]] {
-                        result = (result << 1)
-                            | (cols_1[dirs_1
-                                .iter()
-                                .position(|x| *x == Face::FACE_SET[pair_idx * 2])
-                                .unwrap()]
-                                == cols_2[dirs_2
-                                    .iter()
-                                    .position(|x| *x == Face::FACE_SET[pair_idx * 2 + 1])
-                                    .unwrap()]) as u64;
-                    }
-                }
-            }
-        }
-        */
         result
     }
 
@@ -236,7 +194,6 @@ impl Extractor {
     }
 
     fn mt_search(inf: &TableInfos, cub: Cube) -> HashMap<u64, Vec<u8>> {
-        println!("Computation unit started...");
         let map = thread::scope(|s| {
             let mut thrds = Vec::with_capacity(inf.set_sz);
             let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
@@ -252,7 +209,6 @@ impl Extractor {
                     table
                 }));
             }
-
             for thrd in thrds {
                 for (key, val) in thrd.join().unwrap() {
                     result.ins_min(key, val);
@@ -261,7 +217,6 @@ impl Extractor {
             result
         })
         .unwrap();
-        println!("Computation unit ended...");
         map
     }
 
@@ -273,35 +228,7 @@ impl Extractor {
             inf = &Extractor::TAB_INF[id - 1];
             file = format!("tabs/mt_table_{}", inf.id);
             println!("Table {} extraction:", inf.id);
-            match id {
-                5 => {
-                    let map = thread::scope(|s| {
-                        let seeds = Extractor::g3_seeds();
-                        let mut thrds = Vec::with_capacity(seeds.len());
-                        let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
-
-                        for seed in seeds {
-                            let mut cub = Cube::new();
-
-                            for mv in seed {
-                                cub.rotate(mv, false);
-                            }
-                            thrds.push(s.spawn(|_| Self::mt_search(inf, cub)));
-                        }
-
-                        for thrd in thrds {
-                            for (key, val) in thrd.join().unwrap() {
-                                result.ins_min(key, val);
-                            }
-                        }
-                        result
-                    })
-                    .unwrap();
-                    map
-                }
-                _ => Self::mt_search(inf, Cube::new()),
-            }
-            .save(&file, inf.key_sz);
+            Self::mt_search(inf, Cube::new()).save(&file, inf.key_sz);
             println!("Extracted to file {}", file);
         }
     }

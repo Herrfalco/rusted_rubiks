@@ -28,7 +28,7 @@ impl Extractor {
         TableInfos {
             id: 3,
             key_gen: Self::key_gen_3,
-            key_sz: 28,
+            key_sz: 16,
             set_sz: 10,
             rank: 13,
             cap: 29_400,
@@ -145,7 +145,7 @@ impl Extractor {
         result
     }
 
-    //28bit key
+    //16bit key
     fn key_gen_3(cub: &Cube) -> u64 {
         let mut result = 0;
 
@@ -153,6 +153,7 @@ impl Extractor {
             for pos in face {
                 let (dir, col) = match cub.subs[cub.ids[*pos]] {
                     Edge(dirs, cols) => (dirs[1], cols[1]),
+                    Corner(dirs, cols) => (dirs[1], cols[1]),
                     _ => continue,
                 };
                 result = (result << 1)
@@ -165,6 +166,7 @@ impl Extractor {
                             }]) as u64;
             }
         }
+        /*
         for (pair_idx, face_pair) in Cube::FACE_MAP.chunks(2).enumerate() {
             for (pos_1, pos_2) in face_pair[0].iter().zip(face_pair[1].iter()) {
                 if let Corner(dirs_1, cols_1) = cub.subs[cub.ids[*pos_1]] {
@@ -182,6 +184,7 @@ impl Extractor {
                 }
             }
         }
+        */
         result
     }
 
@@ -271,7 +274,7 @@ impl Extractor {
             file = format!("tabs/mt_table_{}", inf.id);
             println!("Table {} extraction:", inf.id);
             match id {
-                3 => {
+                5 => {
                     let map = thread::scope(|s| {
                         let seeds = Extractor::g3_seeds();
                         let mut thrds = Vec::with_capacity(seeds.len());

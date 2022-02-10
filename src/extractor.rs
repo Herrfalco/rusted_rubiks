@@ -46,7 +46,7 @@ impl Extractor {
         },
     ];
 
-    const TETRAD: [Id; 4] = [0, 8, 20, 24];
+    const CORN_ID: [Id; 8] = [0, 2, 6, 8, 18, 20, 24, 26];
 
     pub fn new(cube: Cube) -> Self {
         Self {
@@ -138,9 +138,11 @@ impl Extractor {
                                     }]) as u64
                     }
                     Corner(..) => {
-                        (result << 1)
-                            | (Self::TETRAD.contains(pos) ^ Self::TETRAD.contains(&cub.ids[*pos]))
-                                as u64
+                        (result << 3)
+                            | Self::CORN_ID
+                                .iter()
+                                .position(|idx| *idx == cub.ids[*pos])
+                                .unwrap() as u64
                     }
                     _ => continue,
                 };

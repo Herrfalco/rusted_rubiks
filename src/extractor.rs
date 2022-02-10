@@ -1,6 +1,9 @@
 use super::*;
 use crossbeam::thread;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 
 pub struct Extractor {
     cube: Cube,
@@ -228,7 +231,41 @@ impl Extractor {
             inf = &Extractor::TAB_INF[id - 1];
             file = format!("tabs/mt_table_{}", inf.id);
             println!("Table {} extraction:", inf.id);
-            Self::mt_search(inf, Cube::new()).save(&file, inf.key_sz);
+            match id {
+                3 => {
+                    let mut seeds: Vec<Option<Cube>> =
+                        BufReader::new(File::open("src/g3_seeds").unwrap())
+                            .lines()
+                            .map(|l| Some(Cube::from_str(&l.unwrap(), false)))
+                            .collect();
+                    let map = thread::scope(|s| {
+                        let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
+
+                        //suprimer le enumerate
+                        for (i, cubs) in seeds.chunks_mut(2).enumerate() {
+                            let mut thrds = Vec::with_capacity(2);
+
+                            for cub in cubs {
+                                println!("{}", cub.as_ref().unwrap());
+                                thrds.push(s.spawn(|_| Self::mt_search(inf, cub.take().unwrap())));
+                            }
+
+                            for thrd in thrds {
+                                for (key, val) in thrd.join().unwrap() {
+                                    result.ins_min(key, val);
+                                }
+                            }
+                            //supprimer le tmp
+                            result.save(&format!("{}_{}_48", &file, i), inf.key_sz);
+                        }
+                        result
+                    })
+                    .unwrap();
+                    map
+                }
+                _ => Self::mt_search(inf, Cube::new()),
+            }
+            .save(&file, inf.key_sz);
             println!("Extracted to file {}", file);
         }
     }

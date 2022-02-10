@@ -248,6 +248,7 @@ impl Extractor {
                             let mut thrds = Vec::with_capacity(2);
 
                             for cub in cubs {
+                                //supprimer le display
                                 println!("{}", cub.as_ref().unwrap());
                                 thrds.push(s.spawn(|_| Self::mt_search(inf, cub.take().unwrap())));
                             }

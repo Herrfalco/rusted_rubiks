@@ -243,8 +243,10 @@ impl Extractor {
                     let map = thread::scope(|s| {
                         let mut result: HashMap<u64, Vec<u8>> = HashMap::with_capacity(inf.cap);
 
-                        //suprimer le enumerate
-                        for (i, cubs) in seeds.chunks_mut(2).enumerate() {
+                        //suprimer le load, le println, le enumerate et le skip
+                        result.load("tabs/mt_table_3_1_48", inf.key_sz);
+                        println!("save has {} entries", result.len());
+                        for (i, cubs) in seeds.chunks_mut(2).enumerate().skip(2) {
                             let mut thrds = Vec::with_capacity(2);
 
                             for cub in cubs {
@@ -259,7 +261,7 @@ impl Extractor {
                                 }
                             }
                             //supprimer le tmp
-                            result.save(&format!("{}_{}_48", &file, i), inf.key_sz);
+                            result.save(&format!("{}_{}_48", &file, i + 1), inf.key_sz);
                         }
                         result
                     })
